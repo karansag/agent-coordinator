@@ -1,0 +1,22 @@
+[project]
+name = "agent-msg"
+version = "0.1.0"
+description = "Tiny agent-to-agent message bus (SQLite + tmux delivery)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[project.scripts]
+agent-msg = "agent_msg.client:main"
+agent-msg-server = "agent_msg.server:_run"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

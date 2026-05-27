@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Msg Register"
+  short_description: "Register this Codex agent with agent-msg"
+  default_prompt: "Use $agent-msg-register to register this Codex agent with agent-msg."

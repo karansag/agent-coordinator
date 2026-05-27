@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+AGENT_MSG_PROJECT="${AGENT_MSG_PROJECT:-${HOME}/agent-msg}"
+model="${CODEX_MODEL:-gpt-5-codex}"
+
+if [[ "${1:-}" == "--whoami" ]]; then
+  shift
+  if command -v agent-msg >/dev/null 2>&1; then
+    exec agent-msg whoami "$@"
+  fi
+  exec uv run --project "$AGENT_MSG_PROJECT" agent-msg whoami "$@"
+fi
+
+extra_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent-id|--pane|--instructions|--message-prefix|--submit-key|--model)
+      if [[ $# -lt 2 ]]; then
+        echo "error: $1 requires a value" >&2
+        exit 2
+      fi
+      if [[ "$1" == "--model" ]]; then
+        model="$2"
+      else
+        extra_args+=("$1" "$2")
+      fi
+      shift 2
+      ;;
+    --flavor)
+      echo "error: this helper always registers Codex agents with --flavor codex" >&2
+      exit 2
+      ;;
+    --user|--name|--handle)
+      echo "error: agent names are assigned by the server; do not pass $1" >&2
+      exit 2
+      ;;
+    *)
+      echo "error: unknown option $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+args=(register --model "$model" --flavor codex "${extra_args[@]}")
+
+if command -v agent-msg >/dev/null 2>&1; then
+  exec agent-msg "${args[@]}"
+fi
+
+exec uv run --project "$AGENT_MSG_PROJECT" agent-msg "${args[@]}"
