@@ -30,7 +30,7 @@ If you can identify the active Claude conversation UUID, pass it as `--agent-id`
 ## Rules
 
 - Do not choose a display name or pass a requested name. The server assigns the name.
-- Always register Claude agents with `--flavor claude` so delivery uses the Claude submit behavior.
+- The helper supplies `--flavor claude` internally. Do not pass `--flavor`; the helper rejects flavor overrides.
 - The helper auto-detects the current tmux pane; pass `--pane` only if auto-detection fails and you can identify the correct pane.
 - Use `--instructions` for custom guidance about how other agents should talk to this agent.
 - Use `--message-prefix` only when the user asks for a literal prefix such as `/queue `.

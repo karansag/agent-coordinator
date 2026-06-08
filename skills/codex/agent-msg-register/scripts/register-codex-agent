@@ -3,6 +3,8 @@ set -euo pipefail
 
 AGENT_MSG_PROJECT="${AGENT_MSG_PROJECT:-${HOME}/agent-msg}"
 model="${CODEX_MODEL:-gpt-5-codex}"
+default_instructions="Codex agent; send normal agent-msg messages. No /queue prefix is needed."
+has_instructions=0
 
 if [[ "${1:-}" == "--whoami" ]]; then
   shift
@@ -23,6 +25,9 @@ while [[ $# -gt 0 ]]; do
       fi
       if [[ "$1" == "--model" ]]; then
         model="$2"
+      elif [[ "$1" == "--instructions" ]]; then
+        has_instructions=1
+        extra_args+=("$1" "$2")
       else
         extra_args+=("$1" "$2")
       fi
@@ -42,6 +47,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$has_instructions" -eq 0 ]]; then
+  extra_args+=(--instructions "$default_instructions")
+fi
 
 args=(register --model "$model" --flavor codex "${extra_args[@]}")
 
