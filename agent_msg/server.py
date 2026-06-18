@@ -128,11 +128,14 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
             req.message_prefix,
             submit_key,
         )
+        status_title = tmux.status_title(user_id, flavor)
+        tmux.set_pane_title(req.tmux_pane, status_title)
         registered = db.get_recipient(conn, user_id)
         peers = [r for r in db.list_recipients(conn) if r["user_id"] != user_id]
         return {
             "ok": True,
             "user_id": user_id,
+            "status_title": status_title,
             "tmux_pane": req.tmux_pane,
             "agent_id": registered["agent_id"] if registered else req.agent_id,
             "model": registered["model"] if registered else req.model,

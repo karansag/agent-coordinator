@@ -12,6 +12,7 @@ from agent_msg import server, tmux
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     calls = []
+    pane_titles = []
 
     def fake_deliver(
         pane,
@@ -23,10 +24,16 @@ def client(tmp_path, monkeypatch):
         calls.append((pane, text, message_prefix, submit_key, flavor))
         return True, None
 
+    def fake_set_pane_title(pane, title):
+        pane_titles.append((pane, title))
+        return True, None
+
     monkeypatch.setattr(tmux, "deliver", fake_deliver)
+    monkeypatch.setattr(tmux, "set_pane_title", fake_set_pane_title)
     app = server.create_app(tmp_path / "db.sqlite")
     c = TestClient(app)
     c._calls = calls
+    c._pane_titles = pane_titles
     return c
 
 
@@ -55,6 +62,8 @@ def test_register_without_user_id_assigns_cute_name(client):
     assert body["model"] == "claude-opus-4-7"
     assert body["flavor"] == "claude"
     assert body["submit_key"] == "C-m"
+    assert body["status_title"] == f"agent-msg: {body['user_id']} (claude)"
+    assert client._pane_titles[-1] == ("0:0.0", body["status_title"])
 
 
 def test_register_rejects_explicit_user_id(client):

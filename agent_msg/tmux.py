@@ -72,6 +72,30 @@ def submit_delay_for_flavor(flavor: str | None) -> float:
     return FLAVOR_SUBMIT_DELAYS.get(flavor.lower(), 0.0)
 
 
+def status_title(user_id: str, flavor: str | None = None) -> str:
+    """Return the short label shown in tmux pane titles."""
+    if flavor:
+        return f"agent-msg: {user_id} ({flavor})"
+    return f"agent-msg: {user_id}"
+
+
+def set_pane_title(pane: str, title: str) -> tuple[bool, str | None]:
+    """Set a tmux pane title without renaming the window or agent session."""
+    try:
+        subprocess.run(
+            ["tmux", "select-pane", "-t", pane, "-T", title],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+    except subprocess.CalledProcessError as e:
+        return False, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return False, str(e)
+    return True, None
+
+
 def deliver(
     pane: str,
     text: str,

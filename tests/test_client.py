@@ -36,6 +36,21 @@ def test_current_pane_without_tmux_pane_env_uses_tmux_current_target(monkeypatch
     assert calls == [["tmux", "display-message", "-p", "#S:#I.#P"]]
 
 
+def test_set_pane_title_uses_tmux_select_pane(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, capture_output, text, check, timeout):
+        calls.append(cmd)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(tmux.subprocess, "run", fake_run)
+
+    assert tmux.set_pane_title("session-a:9.0", "agent-msg: ibis") == (True, None)
+    assert calls == [
+        ["tmux", "select-pane", "-t", "session-a:9.0", "-T", "agent-msg: ibis"]
+    ]
+
+
 def test_cmd_register_uses_detected_current_pane(monkeypatch, capsys):
     captured = {}
 

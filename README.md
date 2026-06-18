@@ -1,77 +1,222 @@
 # agent-msg
 
-Tiny local message bus for AI agents running in separate tmux panes.
-SQLite store + delivery by injecting `tmux send-keys` into the
-recipient's pane.
+`agent-msg` is a tiny local message bus for AI agents running in
+separate tmux panes.
 
-If you are an AI agent, read **[AGENT_PROMPT.md](./AGENT_PROMPT.md)**
-first — it covers registration, the inbound-message format, and basic
-etiquette. This file is the operator-facing setup/lifecycle guide.
+It gives agents a practical way to coordinate without a shared browser,
+cloud service, polling loop, or custom client integration. Messages are
+stored in SQLite and delivered by typing into the recipient's tmux pane
+with `tmux send-keys`, so the message lands exactly where the agent is
+already listening: its prompt.
 
----
+## Demo
 
-## What it does
+<!-- Add a short GIF or video here. Suggested shot: two tmux panes, both
+registered with agent-msg, then one pane sends a message and the other
+wakes up with `[agent-msg from ...]` in its prompt. -->
 
-- Records messages in `~/.agent-msg/db.sqlite` (sender, recipient,
-  context, content, timestamp, delivery status).
-- Delivers each message by typing it into the recipient's tmux pane
-  followed by a submit key (default `C-m`), so it lands at the
-  recipient's prompt as if the user typed it.
-- Auto-assigns a cute short handle (`otter`, `tapir`, ...) on
-  registration; separates that routing handle from the agent's stable
-  `agent_id` (e.g. conversation UUID) and a `model` telemetry label.
-  Agents do not choose their own handles.
-- Lets each agent publish optional contact instructions plus delivery
-  preferences like a message prefix (`/queue `) or alternate submit key.
+```text
+[ demo gif / video coming soon ]
+```
 
-## Install
+If you are an AI agent, start with [AGENT_PROMPT.md](./AGENT_PROMPT.md).
+It explains how to register, how to recognize inbound agent traffic, and
+how to avoid mistaking another agent's message for the user.
+
+## Why This Exists
+
+Multiple coding agents are useful, but they usually cannot talk to each
+other directly. `agent-msg` fills that gap with a local, inspectable
+protocol:
+
+- A long-running server tracks registered agents and recent messages.
+- Each agent gets a short server-assigned handle for routing.
+- The server remembers the agent's stable session id, model label, tmux
+  pane, delivery flavor, and optional contact instructions.
+- Sending a message injects a formatted line into the recipient's pane
+  and submits it with the right key for that client.
+- Every message is recorded, even when delivery fails.
+
+The result is intentionally simple: agents can ask each other for status,
+delegate work, hand off context, or report completion while the human
+operator keeps full visibility.
+
+## How It Fits
+
+`agent-msg` is not trying to be a project manager, task graph, workspace
+orchestrator, or mailbox product. It is the delivery layer underneath
+those systems: a small component that can wake or notify a running
+terminal agent.
+
+That makes it complementary to tools like:
+
+- [Beads](https://github.com/gastownhall/beads), which handles
+  structured work tracking and agent-readable project memory.
+- [Gas Town](https://github.com/gastownhall/gastown), which manages
+  multi-agent workspaces and persistent orchestration state.
+- [hcom](https://github.com/aannoo/hcom), which provides a broader
+  terminal-agent control surface.
+- [MCP Agent Mail](https://github.com/dicklesworthstone/mcp_agent_mail)
+  and [Swarm Protocol](https://github.com/phuryn/swarm-protocol), which
+  expose richer coordination state through MCP-style workflows.
+
+See [docs/landscape.md](./docs/landscape.md) for the longer comparison.
+
+## Quick Start
+
+Requirements: Python 3.12+, `uv`, and `tmux`.
 
 ```bash
-cd ~/agent-msg
+git clone git@github.com:karansag/agent-coordinator.git agent-msg
+cd agent-msg
 uv pip install -e .
 ```
 
-Requires `python>=3.12`, `uv`, and `tmux` on the host.
-
-## Start the server
+Start the server:
 
 ```bash
-# foreground, port 8765
 uv run agent-msg-server
-
-# background (detached so the calling shell can exit safely)
-setsid -f uv run agent-msg-server > /tmp/agent-msg.log 2>&1
 ```
 
-Defaults:
+In each agent's tmux pane, register that agent:
 
-- `AGENT_MSG_HOST` = `127.0.0.1`
-- `AGENT_MSG_PORT` = `8765`
-- `AGENT_MSG_DB`   = `~/.agent-msg/db.sqlite`
+```bash
+agent-msg register \
+  --agent-id "<stable-session-id>" \
+  --model "<model-label>" \
+  --flavor "<codex|claude|hermes|generic>"
+```
 
-## Health-check / status
+Then send a message:
+
+```bash
+agent-msg send --to <handle> --context "handoff" --message "Can you check the failing test?"
+```
+
+Useful status commands:
+
+```bash
+agent-msg whoami
+agent-msg recipients
+agent-msg messages --limit 20
+```
+
+## How Delivery Works
+
+Inbound messages are pushed, not polled. When one agent sends a message,
+the server formats it like this:
+
+```text
+[agent-msg from <sender> · <context>] <content>
+```
+
+Then it runs `tmux send-keys -l <text>` against the recipient's pane,
+followed by the configured submit key. Codex defaults to `Enter`;
+Claude/Hermes default to `C-m`.
+
+Because delivery happens through the prompt, any agent using this system
+must treat lines starting with `[agent-msg from ` as inter-agent traffic,
+not user input. [AGENT_PROMPT.md](./AGENT_PROMPT.md) is written for that
+case.
+
+On registration, `agent-msg` also sets the tmux pane title to the
+server-assigned handle, for example `agent-msg: ibis (codex)`. This does
+not rename the agent conversation or tmux window. To show pane titles in
+tmux pane borders, add something like this to `~/.tmux.conf`:
+
+```tmux
+set -g pane-border-status top
+set -g pane-border-format "#{pane_title}"
+```
+
+Or put the active pane's agent name in the main tmux status bar:
+
+```tmux
+set -g status-right "#{pane_title} | %H:%M"
+```
+
+## Agent Skills
+
+Installable skill definitions live under `skills/`:
+
+- `skills/codex/agent-msg-register`
+- `skills/claude/agent-msg-register`
+
+Copy the relevant skill directory into the corresponding agent home, for
+example `~/.codex/skills/` or `~/.claude/skills/`.
+
+The bundled helpers register the agent with the right delivery flavor
+internally. For example, `register-codex-agent` supplies
+`--flavor codex`; callers should not pass `--flavor` to those helpers.
+
+## Agent Interfaces
+
+Today, `agent-msg` has a small `flavor` concept for Codex, Claude,
+Hermes, and generic terminal delivery. That should become a real adapter
+interface:
+
+- What kind of agent is this?
+- What submit key wakes it?
+- Does it need a message prefix?
+- How should inbound messages be formatted?
+- Which endpoint can reach it: tmux pane, PTY, HTTP, MCP, or something
+  else?
+
+The long-term direction is a typed Rust core with built-in interfaces for
+common agents and a config-defined interface path for custom tools. See
+[docs/rust-rewrite-plan.md](./docs/rust-rewrite-plan.md).
+
+## Recording A Demo
+
+The fastest useful demo is a terminal recording:
+
+1. Open a tmux window with two panes.
+2. Start `uv run agent-msg-server` in one pane or a background shell.
+3. Register pane A and pane B with distinct `--agent-id` values.
+4. Run `agent-msg recipients` so viewers see the assigned handles.
+5. Send `agent-msg send --to <handle> --context demo --message "hello"`.
+6. Show the receiving pane wake up with the injected message.
+
+Good tools:
+
+- `asciinema rec demo.cast` for a terminal recording.
+- `agg demo.cast demo.gif` to render an asciinema recording to GIF.
+- QuickTime, Screen Studio, or OBS if you want a polished video.
+
+Keep it under 30 seconds. The visual point is simple: the sender runs one
+CLI command, and the receiver gets a new prompt turn automatically.
+
+## Configuration
+
+The server defaults are local-only:
+
+```text
+AGENT_MSG_HOST=127.0.0.1
+AGENT_MSG_PORT=8765
+AGENT_MSG_DB=~/.agent-msg/db.sqlite
+```
+
+Health check:
 
 ```bash
 curl http://127.0.0.1:8765/health
-# -> {"ok":true,"db":"/home/<you>/.agent-msg/db.sqlite"}
-
-agent-msg recipients          # who is registered
-agent-msg messages --limit 20 # recent traffic
+# {"ok":true,"db":"/home/<you>/.agent-msg/db.sqlite"}
 ```
 
-## Stop / restart
-
-The server doesn't fork or PID-file itself. Use port-based kill:
+Run detached:
 
 ```bash
-fuser -k 8765/tcp        # kill whatever is bound to 8765
-# then start again as above
+setsid -f uv run agent-msg-server > /tmp/agent-msg.log 2>&1
 ```
 
-If you've changed code, restart (no `--reload`). The SQLite schema
-self-migrates via `ALTER TABLE` on the next start.
+Stop or restart:
 
-## Reset
+```bash
+fuser -k 8765/tcp
+setsid -f uv run agent-msg-server > /tmp/agent-msg.log 2>&1
+```
+
+Reset local state:
 
 ```bash
 fuser -k 8765/tcp
@@ -79,88 +224,87 @@ rm -f ~/.agent-msg/db.sqlite
 setsid -f uv run agent-msg-server > /tmp/agent-msg.log 2>&1
 ```
 
-## CLI quick reference
+## CLI Reference
 
 ```bash
-agent-msg register --agent-id <uuid> --model <label> --flavor <codex|claude|hermes>
-# optional: --instructions "use /queue ..." --message-prefix "/queue " --submit-key C-m
-agent-msg send --to <handle> --message "..."           # send
-agent-msg messages --user <handle> --limit 20          # history
-agent-msg recipients                                    # list peers
-agent-msg whoami                                        # detected pane + registered handle
+agent-msg register \
+  --agent-id <stable-session-id> \
+  --model <label> \
+  --flavor <codex|claude|hermes|generic>
+
+agent-msg send --to <handle> --message "..."
+agent-msg send --to <handle> --context <tag> --message "..."
+agent-msg messages --user <handle> --limit 20
+agent-msg recipients
+agent-msg whoami
 ```
 
-When `--pane` is omitted, the CLI resolves the pane for the current
-shell by targeting `tmux display-message` with `$TMUX_PANE`.
+Optional registration fields:
 
-See `AGENT_PROMPT.md` for the agent-facing version.
+- `--pane`: tmux pane to register. Defaults to the current pane.
+- `--instructions`: human guidance shown to peers.
+- `--message-prefix`: literal prefix inserted before delivered messages.
+- `--submit-key`: tmux key used to submit delivered messages.
 
-## Agent skills
-
-Installable skill definitions live under `skills/`:
-
-- `skills/codex/agent-msg-register` registers Codex agents with
-  `--flavor codex` and lets the server assign the handle.
-- `skills/claude/agent-msg-register` registers Claude Code agents with
-  `--flavor claude` and lets the server assign the handle.
-
-For the local user install, copy those skill directories into the
-corresponding agent home, for example `~/.codex/skills/` or
-`~/.claude/skills/`.
+When `--pane` is omitted, the CLI resolves the current pane with
+`tmux display-message`, targeting `$TMUX_PANE` when available.
 
 ## HTTP API
 
 | Method | Path          | Body / Params                                                       |
 |--------|---------------|---------------------------------------------------------------------|
-| GET    | `/health`     | —                                                                   |
+| GET    | `/health`     | -                                                                   |
 | POST   | `/register`   | `{tmux_pane, agent_id?, model?, flavor?, instructions?, message_prefix?, submit_key?}` |
-| GET    | `/recipients` | —                                                                   |
+| GET    | `/recipients` | -                                                                   |
 | POST   | `/send`       | `{tmux_pane, recipient, content, context?}`                         |
-| GET    | `/messages`   | `?user=<handle>&limit=<n>` (omit `user` for all)                    |
+| GET    | `/messages`   | `?user=<handle>&limit=<n>`; omit `user` for all messages            |
 
-`/register` always responds with the assigned `user_id` and a
-`protocol_brief` string the agent can read once. Senders are resolved
-from the registered tmux pane, not caller-chosen handles.
+`/register` returns the assigned `user_id` and a `protocol_brief` string
+the agent can read once. Senders are resolved from the registered tmux
+pane, not from caller-supplied names.
 
-## Layout
+## Project Layout
 
-```
+```text
 agent_msg/
-  db.py       SQLite layer (recipients, messages, schema migration)
-  tmux.py     pane detection + send-keys delivery + message formatting
-  names.py    cute-name pool
-  server.py   FastAPI app + protocol brief
-  client.py   `agent-msg` CLI
-tests/
-  test_db.py
-  test_server.py
+  client.py   CLI
+  db.py       SQLite layer
+  names.py    server-assigned handle pool
+  server.py   FastAPI app and protocol brief
+  tmux.py     pane detection, delivery, and message formatting
 skills/
   codex/agent-msg-register/
   claude/agent-msg-register/
-AGENT_PROMPT.md   onboarding text for agents
+tests/
+AGENT_PROMPT.md
 ```
 
-## Tests
+## Development
 
 ```bash
 uv run pytest -q
 ```
 
-Delivery is monkeypatched in tests so they don't touch real tmux.
+Delivery is monkeypatched in tests, so the suite does not type into real
+tmux panes.
+
+## Security Model
+
+`agent-msg` is designed for a trusted local machine. It binds to
+`127.0.0.1` by default and assumes callers are allowed to inject text into
+the registered tmux panes. Do not expose the server on an untrusted
+network without adding authentication and thinking through the tmux
+injection risk.
 
 ## Troubleshooting
 
-- **"recipient not registered" 404 on send** — the recipient has never
-  POSTed `/register`. The message is still recorded with
-  `delivered=0` and a `delivery_error`.
-- **Pane disappeared** — if the recipient's tmux session/pane is gone,
-  delivery fails (`delivery_error` shows the tmux stderr). Message is
-  still persisted; re-register from the new pane to fix.
-- **Message text appears but doesn't submit** — register with the right
-  `flavor` so the server chooses the matching submit key. Codex uses
-  `Enter`; Claude/Hermes use `C-m` unless overridden.
-- **Server won't start** — `fuser -k 8765/tcp` to clear a stuck
-  process, or set `AGENT_MSG_PORT=...` to a free port.
-- **`Failed to spawn: agent-msg-server`** — you forgot
-  `uv pip install -e .`; the console-scripts entry point isn't
-  registered yet.
+- **"recipient not registered"**: the recipient has not registered yet.
+  The message is still recorded with `delivered=0`.
+- **Pane disappeared**: delivery failed because the registered tmux pane
+  no longer exists. Re-register from the new pane.
+- **Message appears but does not submit**: register with the correct
+  flavor or set `--submit-key` explicitly.
+- **Server will not start**: clear the port with `fuser -k 8765/tcp`, or
+  set `AGENT_MSG_PORT` to another port.
+- **`agent-msg` command not found**: run `uv pip install -e .` from the
+  repo root.
