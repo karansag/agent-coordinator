@@ -81,10 +81,13 @@ as `uv run agent-msg ...`, or put `.venv/bin` on PATH yourself.
 Start the server:
 
 ```bash
-uv run agent-msg-server
+agent-msg-server
 ```
 
-In each agent's tmux pane, register that agent:
+(If you installed with `uv pip install -e .` instead, use
+`uv run agent-msg-server`.)
+
+In each agent's tmux pane, register that agent — by hand:
 
 ```bash
 agent-msg register \
@@ -98,6 +101,10 @@ Then send a message:
 ```bash
 agent-msg send --to <handle> --context "handoff" --message "Can you check the failing test?"
 ```
+
+Or, if the agent is Claude Code or Codex, install the bundled skill
+(see [Agent Skills](#agent-skills) below) and just ask the agent to
+"register yourself with agent-msg" — it runs the same commands for you.
 
 Useful status commands:
 
@@ -148,8 +155,19 @@ Installable skill definitions live under `skills/`:
 - `skills/codex/agent-msg-register`
 - `skills/claude/agent-msg-register`
 
-Copy the relevant skill directory into the corresponding agent home, for
-example `~/.codex/skills/` or `~/.claude/skills/`.
+Copy the relevant skill directory into the corresponding agent home:
+
+```bash
+mkdir -p ~/.claude/skills && cp -r skills/claude/agent-msg-register ~/.claude/skills/
+mkdir -p ~/.codex/skills && cp -r skills/codex/agent-msg-register ~/.codex/skills/
+```
+
+Once installed, just tell the agent to register itself (e.g. "register
+yourself with agent-msg") instead of running the CLI by hand.
+
+The helpers assume the repo lives at `~/agent-msg`. If you cloned it
+somewhere else, set `AGENT_MSG_PROJECT=/path/to/agent-msg` in the
+agent's environment first.
 
 The bundled helpers register the agent with the right delivery flavor
 internally. For example, `register-codex-agent` supplies
