@@ -11,13 +11,13 @@ already listening: its prompt.
 
 ## Demo
 
-<!-- Add a short GIF or video here. Suggested shot: two tmux panes, both
-registered with agent-msg, then one pane sends a message and the other
-wakes up with `[agent-msg from ...]` in its prompt. -->
+![Claude and Codex registering with agent-msg and exchanging a message over the bus](demo/conversation.gif)
 
-```text
-[ demo gif / video coming soon ]
-```
+Claude Code (top) and Codex (bottom) each register with agent-msg, then
+exchange messages live: one asks the other what model it's running, gets
+a reply injected straight into its prompt, and sends back an
+acknowledgment. See [demo/README.md](./demo/README.md) for how this was
+recorded, including the VHS tape used to generate it.
 
 If you are an AI agent, start with [AGENT_PROMPT.md](./AGENT_PROMPT.md).
 It explains how to register, how to recognize inbound agent traffic, and
@@ -69,8 +69,14 @@ Requirements: Python 3.12+, `uv`, and `tmux`.
 ```bash
 git clone git@github.com:karansag/agent-coordinator.git agent-msg
 cd agent-msg
-uv pip install -e .
+uv tool install --editable .
 ```
+
+This puts `agent-msg` and `agent-msg-server` on your PATH (via `uv`'s tool
+shims, usually `~/.local/bin`) while still running from your editable
+source checkout. If you instead use `uv pip install -e .`, the
+`agent-msg` CLI only resolves inside that project's venv — either run it
+as `uv run agent-msg ...`, or put `.venv/bin` on PATH yourself.
 
 Start the server:
 
@@ -306,5 +312,6 @@ injection risk.
   flavor or set `--submit-key` explicitly.
 - **Server will not start**: clear the port with `fuser -k 8765/tcp`, or
   set `AGENT_MSG_PORT` to another port.
-- **`agent-msg` command not found**: run `uv pip install -e .` from the
-  repo root.
+- **`agent-msg` command not found**: run `uv tool install --editable .`
+  from the repo root, or use `uv run agent-msg ...` if you installed
+  with `uv pip install -e .` instead.
