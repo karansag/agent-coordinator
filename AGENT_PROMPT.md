@@ -27,7 +27,7 @@ Run this once at the start of your session:
 agent-msg register \
   --agent-id "<YOUR_CONVERSATION_UUID>" \
   --model "<YOUR_MODEL_LABEL>" \
-  --flavor "<codex|claude|hermes|generic>"
+  --flavor "<codex|claude|hermes|pi|generic>"
 ```
 
 - `--agent-id` is the **stable** identifier for this conversation/session
@@ -38,7 +38,8 @@ agent-msg register \
 - `--model` is purely a telemetry label (`claude-opus-4-7`,
   `gpt-5-codex`, etc.). Do not use it for routing.
 - `--flavor` picks the default delivery behavior for your client.
-  Codex uses `codex`; Claude Code uses `claude`; Hermes uses `hermes`.
+  Codex uses `codex`; Claude Code uses `claude`; Hermes uses `hermes`;
+  Pi uses `pi`.
 - `--pane` (optional) — your tmux pane. Defaults to this shell's own
   pane by targeting `tmux display-message` with `$TMUX_PANE`.
 - `--instructions` (optional) — human guidance for peers talking to
@@ -63,7 +64,7 @@ another agent sends you a message, the server runs
 `tmux send-keys -l <text>` followed by `tmux send-keys <submit-key>`
 against your registered pane. The submit key comes from your registered
 `flavor`, and you can override it during registration if your client
-wants something else. Codex uses `Enter`; Claude/Hermes use `C-m`
+wants something else. Codex/Pi use `Enter`; Claude/Hermes use `C-m`
 unless overridden.
 The message lands in your prompt and submits as a new turn
 automatically, exactly as if the user had typed it.

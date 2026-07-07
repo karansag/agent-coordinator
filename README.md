@@ -93,7 +93,7 @@ In each agent's tmux pane, register that agent — by hand:
 agent-msg register \
   --agent-id "<stable-session-id>" \
   --model "<model-label>" \
-  --flavor "<codex|claude|hermes|generic>"
+  --flavor "<codex|claude|hermes|pi|generic>"
 ```
 
 Then send a message:
@@ -124,7 +124,7 @@ the server formats it like this:
 ```
 
 Then it runs `tmux send-keys -l <text>` against the recipient's pane,
-followed by the configured submit key. Codex defaults to `Enter`;
+followed by the configured submit key. Codex/Pi default to `Enter`;
 Claude/Hermes default to `C-m`.
 
 Because delivery happens through the prompt, any agent using this system
@@ -176,8 +176,8 @@ internally. For example, `register-codex-agent` supplies
 ## Agent Interfaces
 
 Today, `agent-msg` has a small `flavor` concept for Codex, Claude,
-Hermes, and generic terminal delivery. That should become a real adapter
-interface:
+Hermes, Pi, and generic terminal delivery. That should become a real
+adapter interface:
 
 - What kind of agent is this?
 - What submit key wakes it?
@@ -254,7 +254,7 @@ setsid -f uv run agent-msg-server > /tmp/agent-msg.log 2>&1
 agent-msg register \
   --agent-id <stable-session-id> \
   --model <label> \
-  --flavor <codex|claude|hermes|generic>
+  --flavor <codex|claude|hermes|pi|generic>
 
 agent-msg send --to <handle> --message "..."
 agent-msg send --to <handle> --context <tag> --message "..."

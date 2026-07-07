@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import time
 
@@ -37,11 +38,19 @@ FLAVOR_SUBMIT_KEYS = {
     "claude": DEFAULT_SUBMIT_KEY,
     "codex": "Enter",
     "hermes": DEFAULT_SUBMIT_KEY,
+    "pi": "Enter",
 }
 
 FLAVOR_SUBMIT_DELAYS = {
     "codex": 0.2,
 }
+
+
+def _has_label_token(label: str, token: str) -> bool:
+    return (
+        re.search(rf"(^|[^a-z0-9]){re.escape(token)}([^a-z0-9]|$)", label)
+        is not None
+    )
 
 
 def infer_flavor(model: str | None) -> str:
@@ -55,6 +64,8 @@ def infer_flavor(model: str | None) -> str:
         return "claude"
     if "hermes" in label:
         return "hermes"
+    if _has_label_token(label, "pi"):
+        return "pi"
     return DEFAULT_FLAVOR
 
 

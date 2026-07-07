@@ -100,6 +100,24 @@ def test_register_keeps_contact_preferences(client):
     assert body["submit_key"] == "Enter"
 
 
+@pytest.mark.parametrize(
+    ("flavor", "submit_key"),
+    [
+        ("hermes", "C-m"),
+        ("pi", "Enter"),
+    ],
+)
+def test_register_known_harness_flavor_defaults(client, flavor, submit_key):
+    r = client.post(
+        "/register",
+        json={"tmux_pane": "0:0.0", "flavor": flavor},
+    )
+    body = r.json()
+    assert body["flavor"] == flavor
+    assert body["submit_key"] == submit_key
+    assert body["status_title"] == f"agent-msg: {body['user_id']} ({flavor})"
+
+
 def test_register_allows_submit_key_override_over_flavor_default(client):
     r = client.post(
         "/register",
@@ -108,6 +126,25 @@ def test_register_allows_submit_key_override_over_flavor_default(client):
     body = r.json()
     assert body["flavor"] == "codex"
     assert body["submit_key"] == "C-m"
+
+
+@pytest.mark.parametrize(
+    ("model", "expected_flavor", "expected_submit_key"),
+    [
+        ("hermes-agent", "hermes", "C-m"),
+        ("pi-coding-agent", "pi", "Enter"),
+    ],
+)
+def test_register_infers_harness_flavor_from_model(
+    client, model, expected_flavor, expected_submit_key
+):
+    r = client.post(
+        "/register",
+        json={"tmux_pane": "0:0.0", "model": model},
+    )
+    body = r.json()
+    assert body["flavor"] == expected_flavor
+    assert body["submit_key"] == expected_submit_key
 
 
 def test_register_includes_protocol_brief(client):
@@ -163,6 +200,41 @@ def test_register_then_send_delivers_and_records(client):
     assert submit_key == "Enter"
     assert flavor == "codex"
     assert sender in text and "mathy" in text and "hello" in text
+
+
+@pytest.mark.parametrize(
+    ("flavor", "expected_submit_key"),
+    [
+        ("hermes", "C-m"),
+        ("pi", "Enter"),
+    ],
+)
+def test_send_passes_harness_flavor_delivery_preferences(
+    client, flavor, expected_submit_key
+):
+    sender = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    recipient = client.post(
+        "/register",
+        json={"tmux_pane": "0:1.0", "flavor": flavor},
+    ).json()["user_id"]
+
+    r = client.post(
+        "/send",
+        json={
+            "tmux_pane": "0:0.0",
+            "recipient": recipient,
+            "context": "smoke",
+            "content": "hello",
+        },
+    )
+
+    assert r.status_code == 200
+    pane, text, message_prefix, submit_key, delivered_flavor = client._calls[-1]
+    assert pane == "0:1.0"
+    assert message_prefix is None
+    assert submit_key == expected_submit_key
+    assert delivered_flavor == flavor
+    assert sender in text and "smoke" in text and "hello" in text
 
 
 def test_send_rejects_unregistered_sender_pane(client):

@@ -51,6 +51,34 @@ def test_set_pane_title_uses_tmux_select_pane(monkeypatch):
     ]
 
 
+def test_flavor_defaults_cover_pi_and_hermes():
+    assert tmux.submit_key_for_flavor("pi") == "Enter"
+    assert tmux.submit_key_for_flavor("hermes") == "C-m"
+    assert tmux.infer_flavor("pi") == "pi"
+    assert tmux.infer_flavor("pi-coding-agent") == "pi"
+    assert tmux.infer_flavor("hermes-agent") == "hermes"
+    assert tmux.infer_flavor("github-copilot/gpt-5.5") == "generic"
+
+
+def test_deliver_uses_configured_submit_key(monkeypatch):
+    calls = []
+
+    def fake_run(cmd, capture_output, text, check, timeout):
+        calls.append(cmd)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(tmux.subprocess, "run", fake_run)
+
+    assert tmux.deliver("session-a:9.0", "hello", submit_key="Enter", flavor="pi") == (
+        True,
+        None,
+    )
+    assert calls == [
+        ["tmux", "send-keys", "-t", "session-a:9.0", "-l", "hello"],
+        ["tmux", "send-keys", "-t", "session-a:9.0", "Enter"],
+    ]
+
+
 def test_cmd_register_uses_detected_current_pane(monkeypatch, capsys):
     captured = {}
 
