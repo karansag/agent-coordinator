@@ -32,7 +32,21 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_recipient_ts
     ON messages(recipient, ts DESC);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    description TEXT,
+    assignee    TEXT,
+    status      TEXT NOT NULL DEFAULT 'open',
+    created_at  REAL NOT NULL,
+    updated_at  REAL NOT NULL
+);
 """
+
+TASK_STATUSES = ("open", "picked_up", "done")
+
+_UNSET = object()
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
@@ -148,6 +162,55 @@ def list_recipients(conn: sqlite3.Connection) -> list[dict]:
         "FROM recipients ORDER BY user_id"
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def create_task(
+    conn: sqlite3.Connection,
+    title: str,
+    description: str | None = None,
+    assignee: str | None = None,
+) -> dict:
+    now = time.time()
+    cur = conn.execute(
+        "INSERT INTO tasks(title, description, assignee, status, created_at, updated_at) "
+        "VALUES(?,?,?,?,?,?)",
+        (title, description, assignee, "open", now, now),
+    )
+    conn.commit()
+    return get_task(conn, int(cur.lastrowid))
+
+
+def get_task(conn: sqlite3.Connection, task_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_tasks(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id DESC").fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_task(
+    conn: sqlite3.Connection,
+    task_id: int,
+    status: str | None = None,
+    assignee: str | None | object = _UNSET,
+) -> dict | None:
+    task = get_task(conn, task_id)
+    if task is None:
+        return None
+    if status is not None:
+        if status not in TASK_STATUSES:
+            raise ValueError(f"invalid status: {status}")
+        task["status"] = status
+    if assignee is not _UNSET:
+        task["assignee"] = assignee
+    conn.execute(
+        "UPDATE tasks SET status=?, assignee=?, updated_at=? WHERE id=?",
+        (task["status"], task["assignee"], time.time(), task_id),
+    )
+    conn.commit()
+    return get_task(conn, task_id)
 
 
 def record_message(

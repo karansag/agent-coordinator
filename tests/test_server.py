@@ -319,3 +319,94 @@ def test_peek_returns_pane_capture(client):
 def test_peek_unknown_agent_404(client):
     r = client.get("/api/peek/ghost")
     assert r.status_code == 404
+
+
+def test_owner_send_delivers_to_pane_and_records(client):
+    user = client.post("/register", json={"tmux_pane": "0:1.0"}).json()["user_id"]
+    r = client.post("/owner/send", json={"recipient": user, "content": "status update please"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+    pane, text, *_ = client._calls[-1]
+    assert pane == "0:1.0"
+    assert "[agent-msg from owner]" in text and "status update please" in text
+
+    msgs = client.get("/messages", params={"user": user}).json()["messages"]
+    assert msgs[0]["sender"] == "owner"
+
+
+def test_owner_send_unknown_recipient_404(client):
+    r = client.post("/owner/send", json={"recipient": "ghost", "content": "hi"})
+    assert r.status_code == 404
+
+
+def test_agent_can_reply_to_owner_without_tmux_delivery(client):
+    user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    n_calls = len(client._calls)
+    r = client.post(
+        "/send",
+        json={"tmux_pane": "0:0.0", "recipient": "owner", "content": "done with the refactor"},
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert r.json()["delivered_to_pane"] is None
+    assert len(client._calls) == n_calls  # nothing injected anywhere
+
+    msgs = client.get("/messages", params={"user": "owner"}).json()["messages"]
+    assert msgs[0]["sender"] == user
+    assert msgs[0]["delivered"] == 1
+
+
+def test_protocol_brief_mentions_owner_and_tasks(client):
+    brief = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["protocol_brief"]
+    assert "'owner' is the human operator" in brief
+    assert "task-update" in brief
+
+
+def test_create_task_notifies_assignee(client):
+    user = client.post("/register", json={"tmux_pane": "0:1.0"}).json()["user_id"]
+    r = client.post("/tasks", json={"title": "fix the build", "assignee": user})
+    assert r.status_code == 200
+    task = r.json()["task"]
+    assert task["status"] == "open"
+    assert task["assignee"] == user
+
+    pane, text, *_ = client._calls[-1]
+    assert pane == "0:1.0"
+    assert f"task #{task['id']}" in text and "fix the build" in text
+    assert "picked_up" in text and "done" in text  # tells the agent how to update
+
+    state = client.get("/api/state").json()
+    assert state["tasks"][0]["id"] == task["id"]
+
+
+def test_create_task_unregistered_assignee_404(client):
+    r = client.post("/tasks", json={"title": "x", "assignee": "ghost"})
+    assert r.status_code == 404
+
+
+def test_task_status_flow_open_picked_up_done(client):
+    tid = client.post("/tasks", json={"title": "ship it"}).json()["task"]["id"]
+    r = client.patch(f"/tasks/{tid}", json={"status": "picked_up"})
+    assert r.json()["task"]["status"] == "picked_up"
+    r = client.patch(f"/tasks/{tid}", json={"status": "done"})
+    assert r.json()["task"]["status"] == "done"
+    assert client.patch(f"/tasks/{tid}", json={"status": "bogus"}).status_code == 422
+    assert client.patch("/tasks/999", json={"status": "done"}).status_code == 404
+
+
+def test_reassigning_task_notifies_new_assignee(client):
+    a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    b = client.post("/register", json={"tmux_pane": "0:1.0"}).json()["user_id"]
+    tid = client.post("/tasks", json={"title": "review PR", "assignee": a}).json()["task"]["id"]
+    n_calls = len(client._calls)
+
+    r = client.patch(f"/tasks/{tid}", json={"assignee": b})
+    assert r.json()["task"]["assignee"] == b
+    assert len(client._calls) == n_calls + 1
+    pane, text, *_ = client._calls[-1]
+    assert pane == "0:1.0"
+
+    # status-only updates don't re-notify
+    client.patch(f"/tasks/{tid}", json={"status": "picked_up"})
+    assert len(client._calls) == n_calls + 1

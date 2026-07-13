@@ -130,10 +130,48 @@ seconds.
 - **Conversations** groups messages into per-pair threads with chat
   bubbles, context tags, and undelivered-message markers. New messages
   animate in as they arrive.
+- **Tasks** lets you create tasks and assign them to agents. Assignment
+  is delivered into the agent's pane with instructions for updating
+  status. Each agent card shows its current task, and every task row
+  shows status (open, picked up, done) with reassign and status
+  controls.
+- **Message an agent** sends freeform messages as `owner`, the reserved
+  handle for the human operator. Deliveries land in the agent's pane
+  like any other message. Agents can reply with
+  `agent-msg send --to owner`, and those replies appear only on the
+  dashboard.
 
 The portal is a single self-contained HTML page served by the same
 FastAPI process, polling `/api/state` and `/api/peek/<handle>`. There
 is no build step.
+
+### Remote access over Tailscale
+
+To reach the dashboard from other devices on your tailnet, publish the
+server on a separate HTTPS port:
+
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:8765
+```
+
+Then open `https://<machine-name>.<tailnet>.ts.net:8443/` from any
+tailnet device. Remove it with `tailscale serve --https=8443 off`.
+
+## Tasks
+
+Tasks live in the same SQLite database. The owner creates and assigns
+them from the dashboard (or `POST /tasks`); agents update them over the
+CLI:
+
+```bash
+agent-msg tasks                      # list all tasks
+agent-msg tasks --status open        # filter by status
+agent-msg task-update 3 --status picked_up
+agent-msg task-update 3 --status done
+```
+
+Statuses are `open`, `picked_up`, and `done`. Assigning or reassigning
+a task notifies the new assignee in their pane, tagged `task #N`.
 
 ## How Delivery Works
 
@@ -279,9 +317,12 @@ agent-msg register \
 
 agent-msg send --to <handle> --message "..."
 agent-msg send --to <handle> --context <tag> --message "..."
+agent-msg send --to owner --message "..."   # reply to the human operator
 agent-msg messages --user <handle> --limit 20
 agent-msg recipients
 agent-msg whoami
+agent-msg tasks [--status open|picked_up|done]
+agent-msg task-update <id> --status <status> [--assignee <handle>]
 ```
 
 Optional registration fields:
@@ -303,8 +344,12 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | GET    | `/recipients` | -                                                                   |
 | POST   | `/send`       | `{tmux_pane, recipient, content, context?}`                         |
 | GET    | `/messages`   | `?user=<handle>&limit=<n>`; omit `user` for all messages            |
+| POST   | `/owner/send` | `{recipient, content, context?}`; sends as the human `owner`        |
+| GET    | `/tasks`      | -                                                                   |
+| POST   | `/tasks`      | `{title, description?, assignee?}`; assignment notifies the agent   |
+| PATCH  | `/tasks/<id>` | `{status?, assignee?}`; status is `open`, `picked_up`, or `done`    |
 | GET    | `/`           | agent dashboard (HTML)                                              |
-| GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive` + recent messages, oldest first |
+| GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive`, recent messages (oldest first), tasks |
 | GET    | `/api/peek/<handle>` | live text capture of the agent's tmux pane                   |
 
 `/register` returns the assigned `user_id` and a `protocol_brief` string

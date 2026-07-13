@@ -5,6 +5,8 @@
     agent-msg messages [--user X] [--limit N]
     agent-msg recipients
     agent-msg whoami       # prints detected tmux pane + registered handle
+    agent-msg tasks [--status open|picked_up|done]
+    agent-msg task-update ID --status open|picked_up|done [--assignee X]
 
 Defaults:
     --pane            current shell's tmux pane (via `TMUX_PANE`-targeted `tmux display-message`)
@@ -104,6 +106,32 @@ def cmd_recipients(_: argparse.Namespace) -> int:
     return 0 if r.is_success else 1
 
 
+def cmd_tasks(args: argparse.Namespace) -> int:
+    r = httpx.get(f"{base_url()}/tasks", timeout=5)
+    if not r.is_success:
+        print(r.text, file=sys.stderr)
+        return 1
+    tasks = r.json()["tasks"]
+    if args.status:
+        tasks = [t for t in tasks if t["status"] == args.status]
+    print(json.dumps({"tasks": tasks}, indent=2))
+    return 0
+
+
+def cmd_task_update(args: argparse.Namespace) -> int:
+    payload: dict = {}
+    if args.status:
+        payload["status"] = args.status
+    if args.assignee is not None:
+        payload["assignee"] = args.assignee
+    if not payload:
+        print("error: pass --status and/or --assignee", file=sys.stderr)
+        return 2
+    r = httpx.patch(f"{base_url()}/tasks/{args.id}", json=payload, timeout=5)
+    print(r.text)
+    return 0 if r.is_success else 1
+
+
 def cmd_whoami(_: argparse.Namespace) -> int:
     pane = current_pane()
     user = registered_user(pane) if pane else None
@@ -159,6 +187,16 @@ def main(argv: list[str] | None = None) -> int:
 
     rcp = sub.add_parser("recipients")
     rcp.set_defaults(func=cmd_recipients)
+
+    tsk = sub.add_parser("tasks")
+    tsk.add_argument("--status", choices=["open", "picked_up", "done"])
+    tsk.set_defaults(func=cmd_tasks)
+
+    tup = sub.add_parser("task-update")
+    tup.add_argument("id", type=int)
+    tup.add_argument("--status", choices=["open", "picked_up", "done"])
+    tup.add_argument("--assignee")
+    tup.set_defaults(func=cmd_task_update)
 
     who = sub.add_parser("whoami")
     who.set_defaults(func=cmd_whoami)

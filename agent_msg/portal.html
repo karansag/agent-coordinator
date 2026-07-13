@@ -121,6 +121,56 @@
   }
   .empty code { color: var(--honey); }
 
+  /* ---------- forms ---------- */
+  input[type="text"], textarea, select {
+    background: var(--ink-2); border: 1px solid var(--line); color: var(--cream);
+    border-radius: 8px; padding: 7px 10px; font-family: var(--mono); font-size: 12.5px;
+  }
+  input[type="text"]:focus, textarea:focus, select:focus { outline: none; border-color: var(--honey-dim); }
+  button.act {
+    background: rgba(242,169,59,.12); border: 1px solid var(--honey-dim); color: var(--honey);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer; font-family: var(--mono); font-size: 12px;
+  }
+  button.act:hover { background: rgba(242,169,59,.22); }
+  button.mini {
+    background: none; border: 1px solid var(--line); color: var(--cream-dim);
+    border-radius: 6px; padding: 3px 9px; cursor: pointer; font-family: var(--mono); font-size: 11px;
+  }
+  button.mini:hover { color: var(--cream); border-color: var(--honey-dim); }
+  .composer {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    background: var(--ink-2); display: grid; gap: 8px; margin-bottom: 22px;
+  }
+  .composer .note { font-size: 11px; color: var(--cream-dim); }
+  .composer .note b { color: var(--honey); }
+  .composer .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .composer textarea { resize: vertical; min-height: 54px; width: 100%; }
+
+  /* ---------- tasks ---------- */
+  .taskbar { margin-top: 34px; }
+  .task {
+    display: flex; align-items: center; gap: 12px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+    margin-bottom: 8px; background: var(--ink-2); flex-wrap: wrap;
+  }
+  .task.done { opacity: .55; }
+  .task .tid { color: var(--cream-dim); font-size: 11px; }
+  .task .ttl { flex: 1; min-width: 180px; }
+  .task .ttl .t { font-size: 13px; }
+  .task .ttl .meta { font-size: 10.5px; color: var(--cream-dim); }
+  .pill {
+    font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+    border-radius: 20px; padding: 1px 10px; border: 1px solid var(--line); color: var(--cream-dim);
+  }
+  .pill.picked_up { color: var(--honey); border-color: var(--honey-dim); }
+  .pill.done { color: var(--moss); border-color: rgba(143,191,111,.4); }
+  .card .taskline { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 11px; color: var(--cream-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .taskline .on { color: var(--honey); }
+
+  /* ---------- owner ---------- */
+  .msg.from-owner .bubble { border-color: var(--honey-dim); background: rgba(242,169,59,.14); }
+  .owner-name { color: var(--honey); font-weight: 700; }
+
   /* ---------- peek scope ---------- */
   .scope {
     margin-top: 18px; border: 1px solid var(--honey-dim); border-radius: 10px; overflow: hidden;
@@ -190,8 +240,30 @@
     <h2>agents <span class="count" id="agent-count"></span></h2>
     <div class="grid" id="agents"></div>
     <div id="scope-slot"></div>
+    <div class="taskbar">
+      <h2>tasks <span class="count" id="task-count"></span></h2>
+      <form class="composer" id="task-form">
+        <div class="row">
+          <input type="text" id="task-title" placeholder="task title" style="flex:1; min-width:220px">
+          <select id="task-assignee"><option value="">unassigned</option></select>
+          <button class="act" type="submit">create task</button>
+        </div>
+      </form>
+      <div id="tasks"></div>
+    </div>
   </section>
   <section class="threads">
+    <h2>message an agent</h2>
+    <form class="composer" id="msg-form">
+      <div class="note">You send as <b>owner</b>, the human in charge of all agents. Messages are delivered straight into the agent's pane.</div>
+      <div class="row">
+        <span class="note">to</span>
+        <select id="msg-to"></select>
+        <button class="act" type="submit">send as owner</button>
+        <span class="note" id="msg-status"></span>
+      </div>
+      <textarea id="msg-text" placeholder="type a message"></textarea>
+    </form>
     <h2>conversations <span class="count" id="thread-count"></span></h2>
     <div id="threads"></div>
   </section>
@@ -264,6 +336,10 @@ function renderAgents(state) {
       const dir = last.sender === r.user_id ? `→ ${esc(last.recipient)}` : `← ${esc(last.sender)}`;
       lastLine = `<span class="dir">${dir} · ${rel(last.ts, now)}:</span> ${esc(last.content)}`;
     }
+    const task = currentTask(state.tasks, r.user_id);
+    const taskLine = task
+      ? `<span class="on">task #${task.id}</span> ${esc(task.title)} · ${task.status.replace("_", " ")}`
+      : `no active task`;
     return `<div class="card ${r.pane_alive ? "" : "gone"}" data-user="${esc(r.user_id)}">
       <div class="top">
         ${avatar(r.user_id)}
@@ -277,11 +353,86 @@ function renderAgents(state) {
         <span>pane <b>${esc(r.tmux_pane)}</b></span>
         <span>joined <b>${rel(r.registered_at, now)}</b></span>
       </div>
+      <div class="taskline">${taskLine}</div>
       <div class="last">${lastLine}</div>
     </div>`;
   }).join("");
   el.querySelectorAll(".card").forEach(c =>
     c.addEventListener("click", () => togglePeek(c.dataset.user)));
+}
+
+function currentTask(tasks, user) {
+  const mine = (tasks || []).filter(t => t.assignee === user && t.status !== "done");
+  if (!mine.length) return null;
+  const picked = mine.filter(t => t.status === "picked_up");
+  return (picked.length ? picked : mine).sort((a, b) => b.updated_at - a.updated_at)[0];
+}
+
+/* ---------- tasks ---------- */
+let tasksKey = "";
+function renderTasks(state) {
+  $("task-count").textContent = state.tasks.length ? `· ${state.tasks.length}` : "";
+  const agentIds = state.recipients.map(r => r.user_id);
+  const key = JSON.stringify([state.tasks, agentIds]);
+  if (key === tasksKey) return;  // keep selects/buttons stable between changes
+  tasksKey = key;
+  if (!state.tasks.length) {
+    $("tasks").innerHTML = `<div class="empty">No tasks yet. Create one above and assign it to an agent.</div>`;
+    return;
+  }
+  $("tasks").innerHTML = state.tasks.map(t => {
+    const when = new Date(t.created_at * 1000)
+      .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const opts = [`<option value="">unassigned</option>`]
+      .concat(agentIds.map(a =>
+        `<option value="${esc(a)}"${a === t.assignee ? " selected" : ""}>${esc(a)}</option>`))
+      .join("");
+    const buttons = t.status === "done"
+      ? `<button class="mini" data-act="open">reopen</button>`
+      : (t.status === "open" ? `<button class="mini" data-act="picked_up">pick up</button>` : "")
+        + `<button class="mini" data-act="done">done</button>`;
+    return `<div class="task ${t.status}" data-id="${t.id}">
+      <span class="tid">#${t.id}</span>
+      <div class="ttl">
+        <div class="t">${esc(t.title)}</div>
+        <div class="meta">created ${when}${t.description ? " · " + esc(t.description) : ""}</div>
+      </div>
+      <span class="pill ${t.status}">${t.status.replace("_", " ")}</span>
+      <select data-assignee title="assignee">${opts}</select>
+      ${buttons}
+    </div>`;
+  }).join("");
+  $("tasks").querySelectorAll(".task").forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector("[data-assignee]").addEventListener("change", e =>
+      patchTask(id, { assignee: e.target.value }));
+    row.querySelectorAll("[data-act]").forEach(btn =>
+      btn.addEventListener("click", () => patchTask(id, { status: btn.dataset.act })));
+  });
+}
+
+async function patchTask(id, patch) {
+  await fetch(`/tasks/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  tasksKey = "";
+  poll();
+}
+
+let agentSelKey = "";
+function syncAgentSelects(recipients) {
+  const key = recipients.map(r => r.user_id).join(",");
+  if (key === agentSelKey) return;
+  agentSelKey = key;
+  const opts = recipients.map(r =>
+    `<option value="${esc(r.user_id)}">${esc(r.user_id)}</option>`).join("");
+  for (const [sel, prefix] of [[$("msg-to"), ""], [$("task-assignee"), `<option value="">unassigned</option>`]]) {
+    const keep = sel.value;
+    sel.innerHTML = prefix + opts;
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  }
 }
 
 function pairKey(a, b) { return [a, b].sort().join(" ⇄ "); }
@@ -307,15 +458,19 @@ function renderThreads(state) {
       const side = m.sender === a ? "" : "right";
       const fresh = !firstLoad && m.id > lastMsgId ? "fresh" : "";
       const failed = m.delivered ? "" : "failed";
+      const fromOwner = m.sender === "owner" ? "from-owner" : "";
+      const senderName = m.sender === "owner"
+        ? `<span class="owner-name">owner</span>` : esc(m.sender);
       const status = m.delivered ? "" : ` · <span class="ctx">undelivered${m.delivery_error ? ": " + esc(m.delivery_error) : ""}</span>`;
       const ctx = m.context ? ` · <span class="ctx">${esc(m.context)}</span>` : "";
-      return `<div class="msg ${side} ${fresh} ${failed}">
+      return `<div class="msg ${side} ${fresh} ${failed} ${fromOwner}">
         <div class="bubble">${esc(m.content)}</div>
-        <div class="tag">${esc(m.sender)}${ctx} · ${rel(m.ts, now)}${status}</div>
+        <div class="tag">${senderName}${ctx} · ${rel(m.ts, now)}${status}</div>
       </div>`;
     }).join("");
+    const disp = (u) => u === "owner" ? `<span class="owner-name">owner</span>` : esc(u);
     return `<div class="thread">
-      <div class="bar">${esc(a)} <span class="swap">⇄</span> ${esc(b)} <span class="n">${msgs.length} msg${msgs.length === 1 ? "" : "s"}</span></div>
+      <div class="bar">${disp(a)} <span class="swap">⇄</span> ${disp(b)} <span class="n">${msgs.length} msg${msgs.length === 1 ? "" : "s"}</span></div>
       <div class="msgs">${bubbles}</div>
     </div>`;
   }).join("");
@@ -338,6 +493,8 @@ async function poll() {
 
     const fresh = state.messages.filter(m => m.id > lastMsgId);
     renderAgents(state);
+    renderTasks(state);
+    syncAgentSelects(state.recipients);
     renderThreads(state);
     if (!firstLoad && fresh.length) {
       pingAgents(new Set(fresh.flatMap(m => [m.sender, m.recipient])));
@@ -399,6 +556,38 @@ async function refreshPeek() {
     }
   } catch { /* next tick */ }
 }
+
+$("task-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const title = $("task-title").value.trim();
+  if (!title) return;
+  const body = { title };
+  if ($("task-assignee").value) body.assignee = $("task-assignee").value;
+  await fetch("/tasks", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  $("task-title").value = "";
+  tasksKey = "";
+  poll();
+});
+
+$("msg-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const recipient = $("msg-to").value;
+  const content = $("msg-text").value.trim();
+  if (!recipient || !content) return;
+  const r = await fetch("/owner/send", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ recipient, content }),
+  });
+  $("msg-status").textContent = r.ok ? "delivered" : "delivery failed";
+  if (r.ok) $("msg-text").value = "";
+  setTimeout(() => { $("msg-status").textContent = ""; }, 3000);
+  poll();
+});
 
 setInterval(() => {
   $("clock").textContent = new Date().toLocaleTimeString();
