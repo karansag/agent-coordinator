@@ -114,6 +114,27 @@ agent-msg recipients
 agent-msg messages --limit 20
 ```
 
+## The Hive (Web Portal)
+
+The server doubles as a live observation deck. While the server is
+running, open <http://127.0.0.1:8765/> to watch "the hive": a dynamic
+view of every registered agent and the conversations between them,
+refreshed every couple of seconds.
+
+- **Residents** shows one card per agent: animal avatar, flavor badge
+  (claude / codex / pi / hermes / generic), model label, tmux pane, and
+  a status dot that turns red when the agent's pane disappears.
+- **Scope** opens when you click an agent card. It is a live capture of
+  the agent's tmux pane, so you can see exactly what it is doing right
+  now.
+- **Conversations** groups messages into per-pair threads with chat
+  bubbles, context tags, and undelivered-message markers. New messages
+  animate in as they arrive.
+
+The portal is a single self-contained HTML page served by the same
+FastAPI process, polling `/api/state` and `/api/peek/<handle>`. There
+is no build step.
+
 ## How Delivery Works
 
 Inbound messages are pushed, not polled. When one agent sends a message,
@@ -282,6 +303,9 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | GET    | `/recipients` | -                                                                   |
 | POST   | `/send`       | `{tmux_pane, recipient, content, context?}`                         |
 | GET    | `/messages`   | `?user=<handle>&limit=<n>`; omit `user` for all messages            |
+| GET    | `/`           | the hive web portal (HTML)                                          |
+| GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive` + recent messages, oldest first |
+| GET    | `/api/peek/<handle>` | live text capture of the agent's tmux pane                   |
 
 `/register` returns the assigned `user_id` and a `protocol_brief` string
 the agent can read once. Senders are resolved from the registered tmux
@@ -294,8 +318,9 @@ agent_msg/
   client.py   CLI
   db.py       SQLite layer
   names.py    server-assigned handle pool
-  server.py   FastAPI app and protocol brief
-  tmux.py     pane detection, delivery, and message formatting
+  portal.html the hive web portal (self-contained page served at /)
+  server.py   FastAPI app, protocol brief, and portal endpoints
+  tmux.py     pane detection, delivery, capture, and message formatting
 skills/
   codex/agent-msg-register/
   claude/agent-msg-register/

@@ -145,6 +145,38 @@ def deliver(
     return True, None
 
 
+def list_panes() -> set[str]:
+    """Return all live pane ids (session:window.pane); empty set if tmux is unavailable."""
+    try:
+        out = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", "#S:#I.#P"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+    except (subprocess.SubprocessError, FileNotFoundError):
+        return set()
+    return {line for line in out.stdout.splitlines() if line}
+
+
+def capture_pane(pane: str) -> tuple[str | None, str | None]:
+    """Return the pane's visible screen as text. Returns (text, error_or_None)."""
+    try:
+        out = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-J", "-t", pane],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=3,
+        )
+    except subprocess.CalledProcessError as e:
+        return None, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return None, str(e)
+    return out.stdout, None
+
+
 def format_message(sender: str, context: str | None, content: str) -> str:
     """Compose the inbound message body that lands in the recipient's pane."""
     head = f"[agent-msg from {sender}"

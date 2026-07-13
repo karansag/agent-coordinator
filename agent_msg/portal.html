@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-msg · the hive</title>
+<style>
+  :root {
+    --ink: #16120c;
+    --ink-2: #1e1810;
+    --panel: #241c11;
+    --panel-2: #2c2214;
+    --line: #3a2d1a;
+    --honey: #f2a93b;
+    --honey-dim: #b97f27;
+    --cream: #f0e6d2;
+    --cream-dim: #a89878;
+    --moss: #8fbf6f;
+    --alert: #e06c55;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    min-height: 100%;
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgba(242,169,59,.07), transparent 60%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='97' viewBox='0 0 56 97'%3E%3Cg fill='none' stroke='%23f2a93b' stroke-opacity='0.045'%3E%3Cpath d='M28 0 56 16v32L28 64 0 48V16z'/%3E%3Cpath d='M28 64 56 80v32L28 128 0 112V80z'/%3E%3C/g%3E%3C/svg%3E"),
+      var(--ink);
+    color: var(--cream);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: baseline; gap: 18px;
+    padding: 26px 34px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    font-family: var(--serif); font-style: italic; font-weight: 500;
+    font-size: 30px; letter-spacing: .5px; color: var(--cream);
+  }
+  header h1 .amp { color: var(--honey); }
+  header .sub { color: var(--cream-dim); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+  header .right { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--cream-dim); }
+  .beacon { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--moss); box-shadow: 0 0 0 0 rgba(143,191,111,.6); animation: beacon 2.4s infinite; vertical-align: 1px; margin-right: 6px; }
+  .beacon.down { background: var(--alert); animation: none; }
+  @keyframes beacon { 0% { box-shadow: 0 0 0 0 rgba(143,191,111,.5); } 70% { box-shadow: 0 0 0 7px rgba(143,191,111,0); } 100% { box-shadow: 0 0 0 0 rgba(143,191,111,0); } }
+
+  main { display: grid; grid-template-columns: minmax(0,1fr) 420px; gap: 0; align-items: start; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+
+  section.agents { padding: 26px 34px; }
+  section.threads { padding: 26px 28px; border-left: 1px solid var(--line); min-height: calc(100vh - 90px); }
+  @media (max-width: 1000px) { section.threads { border-left: none; border-top: 1px solid var(--line); min-height: 0; } }
+
+  h2 {
+    font-family: var(--serif); font-weight: 500; font-size: 13px;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--honey-dim);
+    margin-bottom: 18px; display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  h2 .count { color: var(--cream-dim); letter-spacing: 0; }
+
+  /* ---------- agent cards ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .card {
+    position: relative;
+    background: linear-gradient(160deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 16px 13px;
+    cursor: pointer;
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    animation: rise .45s ease backwards;
+  }
+  .card:nth-child(2) { animation-delay: .05s } .card:nth-child(3) { animation-delay: .1s }
+  .card:nth-child(4) { animation-delay: .15s } .card:nth-child(5) { animation-delay: .2s }
+  .card:nth-child(6) { animation-delay: .25s }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  .card:hover { transform: translateY(-2px); border-color: var(--honey-dim); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .card.gone { opacity: .45; }
+  .card .top { display: flex; align-items: center; gap: 12px; }
+
+  .hex {
+    position: relative; width: 52px; height: 58px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+    background: var(--hue, #6b5327);
+    font-size: 26px;
+  }
+  .hex .mono2 { font-family: var(--serif); font-size: 20px; font-style: italic; color: var(--ink); }
+  .card .who { min-width: 0; }
+  .card .name { font-family: var(--serif); font-size: 21px; font-style: italic; letter-spacing: .3px; }
+  .card .name .status { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 7px; vertical-align: 2px; }
+  .status.live { background: var(--moss); box-shadow: 0 0 6px rgba(143,191,111,.8); }
+  .status.dead { background: var(--alert); }
+  .chip {
+    display: inline-block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    border: 1px solid var(--line); border-radius: 20px; padding: 1px 9px; color: var(--honey);
+    background: rgba(242,169,59,.07); margin-top: 3px;
+  }
+  .card .meta { margin-top: 11px; font-size: 11px; color: var(--cream-dim); display: grid; gap: 2px; }
+  .card .meta b { color: var(--cream); font-weight: 500; }
+  .card .last { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 11px; color: var(--cream-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .last .dir { color: var(--honey-dim); }
+
+  .ping::before {
+    content: ""; position: absolute; inset: -1px; border-radius: 10px;
+    border: 1px solid var(--honey); animation: ping .9s ease-out forwards; pointer-events: none;
+  }
+  @keyframes ping { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.06); } }
+
+  .empty {
+    border: 1px dashed var(--line); border-radius: 10px; padding: 34px; text-align: center;
+    color: var(--cream-dim); font-size: 13px;
+  }
+  .empty code { color: var(--honey); }
+
+  /* ---------- peek scope ---------- */
+  .scope {
+    margin-top: 18px; border: 1px solid var(--honey-dim); border-radius: 10px; overflow: hidden;
+    background: #0d0b07; animation: rise .3s ease;
+  }
+  .scope header {
+    padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .scope header .t { font-family: var(--serif); font-style: italic; font-size: 17px; }
+  .scope header .pane { font-size: 11px; color: var(--cream-dim); }
+  .scope header .close {
+    margin-left: auto; cursor: pointer; color: var(--cream-dim); border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 10px; font-size: 11px; background: none; font-family: var(--mono);
+  }
+  .scope header .close:hover { color: var(--cream); border-color: var(--honey-dim); }
+  .scope pre {
+    position: relative;
+    padding: 14px 16px; font-size: 12px; line-height: 1.45; color: #cfe3b8;
+    max-height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 3px);
+  }
+  .scope .err { color: var(--alert); padding: 14px 16px; font-size: 12px; }
+
+  /* ---------- threads ---------- */
+  .thread { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 14px; overflow: hidden; background: var(--ink-2); animation: rise .45s ease backwards; }
+  .thread > .bar {
+    display: flex; align-items: center; gap: 8px; padding: 9px 14px;
+    background: linear-gradient(90deg, var(--panel), transparent); border-bottom: 1px solid var(--line);
+    font-family: var(--serif); font-style: italic; font-size: 16px;
+  }
+  .thread > .bar .swap { color: var(--honey); font-family: var(--mono); font-size: 12px; }
+  .thread > .bar .n { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--cream-dim); letter-spacing: .1em; }
+  .msgs { padding: 12px 14px; display: grid; gap: 9px; max-height: 340px; overflow: auto; }
+  .msg { max-width: 88%; justify-self: start; }
+  .msg.right { justify-self: end; }
+  .msg .bubble {
+    border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; font-size: 12px;
+    background: var(--panel); color: var(--cream);
+  }
+  .msg.right .bubble { background: rgba(242,169,59,.09); border-color: rgba(242,169,59,.3); }
+  .msg.fresh .bubble { animation: pop .35s ease; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+  .msg .tag { font-size: 10px; color: var(--cream-dim); margin: 2px 4px 0; }
+  .msg .tag .ctx { color: var(--honey-dim); }
+  .msg.failed .bubble { border-style: dashed; border-color: var(--alert); }
+  .msg.failed .tag .ctx { color: var(--alert); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>the hive <span class="amp">&mdash;</span> agent-msg</h1>
+  <span class="sub">observation deck</span>
+  <div class="right">
+    <span id="conn"><span class="beacon"></span><span id="conn-label">watching</span></span>
+    <span id="clock"></span>
+  </div>
+</header>
+
+<main>
+  <section class="agents">
+    <h2>residents <span class="count" id="agent-count"></span></h2>
+    <div class="grid" id="agents"></div>
+    <div id="scope-slot"></div>
+  </section>
+  <section class="threads">
+    <h2>conversations <span class="count" id="thread-count"></span></h2>
+    <div id="threads"></div>
+  </section>
+</main>
+
+<script>
+const POLL_MS = 2000;
+const PEEK_MS = 2000;
+
+const FLAVOR_ICON = { claude: "✳", codex: "◇", pi: "π", hermes: "☿", generic: "▪" };
+const ANIMAL_EMOJI = {
+  otter: "\u{1F9A6}", badger: "\u{1F9A1}", panda: "\u{1F43C}", raccoon: "\u{1F99D}",
+  hedgehog: "\u{1F994}", viper: "\u{1F40D}", gecko: "\u{1F98E}", newt: "\u{1F98E}",
+  salamander: "\u{1F98E}", capybara: "\u{1F9AB}", manatee: "\u{1F9AD}", lemur: "\u{1F412}",
+  kestrel: "\u{1F985}", magpie: "\u{1F426}\u{200D}⬛", ibis: "\u{1F9A9}", heron: "\u{1FABF}",
+  puffin: "\u{1F427}", narwhal: "\u{1F433}", axolotl: "\u{1F41F}", quokka: "\u{1F428}",
+  wombat: "\u{1F428}", dormouse: "\u{1F401}", shrew: "\u{1F401}", fennec: "\u{1F98A}",
+  mongoose: "\u{1F9A6}", stoat: "\u{1F9A6}", marten: "\u{1F9A6}", ferret: "\u{1F9A6}",
+  ocelot: "\u{1F406}", pangolin: "\u{1F98E}", tapir: "\u{1F417}", civet: "\u{1F431}",
+};
+
+let lastMsgId = 0;
+let firstLoad = true;
+let peekUser = null;
+let peekTimer = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function hue(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.codePointAt(0)) % 360;
+  return h;
+}
+function avatar(name) {
+  const base = name.replace(/-\d+$/, "");
+  const emoji = ANIMAL_EMOJI[base];
+  const bg = `hsl(${hue(name)} 42% 58%)`;
+  const inner = emoji ? esc(emoji) : `<span class="mono2">${esc(base.slice(0, 2))}</span>`;
+  return `<div class="hex" style="--hue:${bg}">${inner}</div>`;
+}
+function rel(ts, now) {
+  const d = Math.max(0, now - ts);
+  if (d < 50) return "just now";
+  if (d < 3600) return `${Math.round(d / 60)}m ago`;
+  if (d < 86400) return `${Math.round(d / 3600)}h ago`;
+  return `${Math.round(d / 86400)}d ago`;
+}
+
+function renderAgents(state) {
+  const el = $("agents");
+  const now = state.now;
+  $("agent-count").textContent = state.recipients.length ? `· ${state.recipients.length}` : "";
+  if (!state.recipients.length) {
+    el.innerHTML = `<div class="empty" style="grid-column:1/-1">No agents in the hive yet.<br><br>
+      Register one from a tmux pane: <code>agent-msg register</code></div>`;
+    return;
+  }
+  const lastByUser = {};
+  for (const m of state.messages) {
+    lastByUser[m.sender] = m;
+    lastByUser[m.recipient] = m;
+  }
+  el.innerHTML = state.recipients.map(r => {
+    const flavor = (r.flavor || "generic").toLowerCase();
+    const icon = FLAVOR_ICON[flavor] || FLAVOR_ICON.generic;
+    const last = lastByUser[r.user_id];
+    let lastLine = `<span class="dir">quiet so far</span>`;
+    if (last) {
+      const dir = last.sender === r.user_id ? `→ ${esc(last.recipient)}` : `← ${esc(last.sender)}`;
+      lastLine = `<span class="dir">${dir} · ${rel(last.ts, now)}:</span> ${esc(last.content)}`;
+    }
+    return `<div class="card ${r.pane_alive ? "" : "gone"}" data-user="${esc(r.user_id)}">
+      <div class="top">
+        ${avatar(r.user_id)}
+        <div class="who">
+          <div class="name">${esc(r.user_id)}<span class="status ${r.pane_alive ? "live" : "dead"}" title="${r.pane_alive ? "pane alive" : "pane gone"}"></span></div>
+          <span class="chip">${icon} ${esc(flavor)}</span>
+        </div>
+      </div>
+      <div class="meta">
+        ${r.model ? `<span>model <b>${esc(r.model)}</b></span>` : ""}
+        <span>pane <b>${esc(r.tmux_pane)}</b></span>
+        <span>joined <b>${rel(r.registered_at, now)}</b></span>
+      </div>
+      <div class="last">${lastLine}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".card").forEach(c =>
+    c.addEventListener("click", () => togglePeek(c.dataset.user)));
+}
+
+function pairKey(a, b) { return [a, b].sort().join(" ⇄ "); }
+
+function renderThreads(state) {
+  const now = state.now;
+  const groups = new Map();
+  for (const m of state.messages) {
+    const k = pairKey(m.sender, m.recipient);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(m);
+  }
+  const ordered = [...groups.entries()].sort((x, y) =>
+    y[1][y[1].length - 1].ts - x[1][x[1].length - 1].ts);
+  $("thread-count").textContent = ordered.length ? `· ${ordered.length}` : "";
+  if (!ordered.length) {
+    $("threads").innerHTML = `<div class="empty">No chatter yet. Once agents start talking,<br>their threads appear here live.</div>`;
+    return;
+  }
+  $("threads").innerHTML = ordered.map(([key, msgs]) => {
+    const [a, b] = key.split(" ⇄ ");
+    const bubbles = msgs.slice(-40).map(m => {
+      const side = m.sender === a ? "" : "right";
+      const fresh = !firstLoad && m.id > lastMsgId ? "fresh" : "";
+      const failed = m.delivered ? "" : "failed";
+      const status = m.delivered ? "" : ` · <span class="ctx">undelivered${m.delivery_error ? ": " + esc(m.delivery_error) : ""}</span>`;
+      const ctx = m.context ? ` · <span class="ctx">${esc(m.context)}</span>` : "";
+      return `<div class="msg ${side} ${fresh} ${failed}">
+        <div class="bubble">${esc(m.content)}</div>
+        <div class="tag">${esc(m.sender)}${ctx} · ${rel(m.ts, now)}${status}</div>
+      </div>`;
+    }).join("");
+    return `<div class="thread">
+      <div class="bar">${esc(a)} <span class="swap">⇄</span> ${esc(b)} <span class="n">${msgs.length} msg${msgs.length === 1 ? "" : "s"}</span></div>
+      <div class="msgs">${bubbles}</div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".msgs").forEach(el => { el.scrollTop = el.scrollHeight; });
+}
+
+function pingAgents(users) {
+  for (const u of users) {
+    const card = document.querySelector(`.card[data-user="${CSS.escape(u)}"]`);
+    if (card) { card.classList.remove("ping"); void card.offsetWidth; card.classList.add("ping"); }
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state");
+    const state = await r.json();
+    $("conn-label").textContent = "watching";
+    $("conn").querySelector(".beacon").classList.remove("down");
+
+    const fresh = state.messages.filter(m => m.id > lastMsgId);
+    renderAgents(state);
+    renderThreads(state);
+    if (!firstLoad && fresh.length) {
+      pingAgents(new Set(fresh.flatMap(m => [m.sender, m.recipient])));
+    }
+    if (state.messages.length) {
+      lastMsgId = Math.max(lastMsgId, ...state.messages.map(m => m.id));
+    }
+    firstLoad = false;
+    if (peekUser) renderScopeShell();  // keep scope mounted across re-render
+  } catch {
+    $("conn-label").textContent = "server unreachable";
+    $("conn").querySelector(".beacon").classList.add("down");
+  }
+}
+
+/* ---------- peek scope ---------- */
+function togglePeek(user) {
+  if (peekUser === user) return closePeek();
+  peekUser = user;
+  renderScopeShell();
+  refreshPeek();
+  clearInterval(peekTimer);
+  peekTimer = setInterval(refreshPeek, PEEK_MS);
+  $("scope-slot").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+function closePeek() {
+  peekUser = null;
+  clearInterval(peekTimer);
+  $("scope-slot").innerHTML = "";
+}
+function renderScopeShell() {
+  if (!peekUser) return;
+  if ($("scope-pre")) return;  // already mounted
+  $("scope-slot").innerHTML = `<div class="scope">
+    <header>
+      <span class="t">scope: ${esc(peekUser)}</span>
+      <span class="pane" id="scope-pane"></span>
+      <button class="close" onclick="closePeek()">close</button>
+    </header>
+    <pre id="scope-pre">capturing pane…</pre>
+  </div>`;
+}
+async function refreshPeek() {
+  if (!peekUser) return;
+  try {
+    const r = await fetch(`/api/peek/${encodeURIComponent(peekUser)}`);
+    const data = await r.json();
+    const pre = $("scope-pre");
+    if (!pre) return;
+    $("scope-pane").textContent = data.tmux_pane || "";
+    if (data.error) {
+      pre.textContent = `could not capture pane: ${data.error}`;
+      pre.style.color = "var(--alert)";
+    } else {
+      const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+      pre.style.color = "";
+      pre.textContent = (data.text || "").replace(/\s+$/, "") || "(pane is blank)";
+      if (stick) pre.scrollTop = pre.scrollHeight;
+    }
+  } catch { /* next tick */ }
+}
+
+setInterval(() => {
+  $("clock").textContent = new Date().toLocaleTimeString();
+}, 1000);
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

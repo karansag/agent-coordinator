@@ -1,16 +1,20 @@
-"""FastAPI server. Endpoints: /register, /send, /messages, /recipients, /health."""
+"""FastAPI server. Endpoints: /register, /send, /messages, /recipients, /health,
+plus the live web portal at / (backed by /api/state and /api/peek)."""
 
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import db, names, tmux
 
 DB_PATH = Path(os.environ.get("AGENT_MSG_DB", "~/.agent-msg/db.sqlite")).expanduser()
+PORTAL_PATH = Path(__file__).parent / "portal.html"
 
 
 class RegisterReq(BaseModel):
@@ -210,6 +214,33 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
     @app.get("/messages")
     def messages(user: str | None = None, limit: int = 50):
         return {"messages": db.fetch_messages(conn, user, limit)}
+
+    @app.get("/", response_class=HTMLResponse)
+    def portal():
+        return PORTAL_PATH.read_text()
+
+    @app.get("/api/state")
+    def state(limit: int = 300):
+        live_panes = tmux.list_panes()
+        recipients = db.list_recipients(conn)
+        for r in recipients:
+            r["pane_alive"] = r["tmux_pane"] in live_panes
+        msgs = db.fetch_messages(conn, None, limit)
+        msgs.reverse()  # oldest first for thread rendering
+        return {"now": time.time(), "recipients": recipients, "messages": msgs}
+
+    @app.get("/api/peek/{user_id}")
+    def peek(user_id: str):
+        recipient = db.get_recipient(conn, user_id)
+        if recipient is None:
+            raise HTTPException(status_code=404, detail={"error": "unknown agent"})
+        text, err = tmux.capture_pane(recipient["tmux_pane"])
+        return {
+            "user_id": user_id,
+            "tmux_pane": recipient["tmux_pane"],
+            "text": text,
+            "error": err,
+        }
 
     return app
 

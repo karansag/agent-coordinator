@@ -17,6 +17,9 @@ build-backend = "setuptools.build_meta"
 include = ["agent_msg*"]
 exclude = ["skills*", "tests*", "docs*"]
 
+[tool.setuptools.package-data]
+agent_msg = ["portal.html"]
+
 [project.scripts]
 agent-msg = "agent_msg.client:main"
 agent-msg-server = "agent_msg.server:_run"

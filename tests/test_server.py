@@ -30,6 +30,10 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(tmux, "deliver", fake_deliver)
     monkeypatch.setattr(tmux, "set_pane_title", fake_set_pane_title)
+    monkeypatch.setattr(tmux, "list_panes", lambda: {"0:0.0", "0:1.0"})
+    monkeypatch.setattr(
+        tmux, "capture_pane", lambda pane: (f"screen of {pane}\n$ ", None)
+    )
     app = server.create_app(tmp_path / "db.sqlite")
     c = TestClient(app)
     c._calls = calls
@@ -275,3 +279,43 @@ def test_messages_history(client):
     msgs = client.get("/messages", params={"user": recipient}).json()["messages"]
     assert [m["content"] for m in msgs] == ["m2", "m1", "m0"]
     assert all(m["sender"] == sender for m in msgs)
+
+
+def test_portal_page_served_at_root(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "the hive" in r.text
+    assert "/api/state" in r.text
+
+
+def test_state_reports_agents_liveness_and_ordered_messages(client):
+    a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]
+    for i in range(2):
+        client.post(
+            "/send",
+            json={"tmux_pane": "0:0.0", "recipient": b, "content": f"m{i}"},
+        )
+
+    state = client.get("/api/state").json()
+    alive = {r["user_id"]: r["pane_alive"] for r in state["recipients"]}
+    assert alive[a] is True
+    assert alive[b] is False  # pane 0:9.0 is not in the fake live-pane set
+    assert [m["content"] for m in state["messages"]] == ["m0", "m1"]
+    assert state["now"] >= state["messages"][-1]["ts"]
+
+
+def test_peek_returns_pane_capture(client):
+    user = client.post("/register", json={"tmux_pane": "0:1.0"}).json()["user_id"]
+    r = client.get(f"/api/peek/{user}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tmux_pane"] == "0:1.0"
+    assert body["text"].startswith("screen of 0:1.0")
+    assert body["error"] is None
+
+
+def test_peek_unknown_agent_404(client):
+    r = client.get("/api/peek/ghost")
+    assert r.status_code == 404
