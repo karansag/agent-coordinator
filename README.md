@@ -121,9 +121,11 @@ open <http://127.0.0.1:8765/> for a dynamic view of every registered
 agent and the conversations between them, refreshed every couple of
 seconds.
 
-- **Agents** shows one card per agent: animal avatar, flavor badge
-  (claude / codex / pi / hermes / generic), model label, tmux pane, and
-  a status dot that turns red when the agent's pane disappears.
+- **Agents** shows one card per running agent: animal avatar, flavor
+  badge (claude / codex / pi / hermes / generic), model label, tmux
+  pane, and current task. Agents whose tmux pane has disappeared move
+  to a separate **stopped** section and drop out of the assignment and
+  message dropdowns.
 - **Scope** opens when you click an agent card. It is a live capture of
   the agent's tmux pane, so you can see exactly what it is doing right
   now.

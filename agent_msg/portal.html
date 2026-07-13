@@ -240,6 +240,10 @@
     <h2>agents <span class="count" id="agent-count"></span></h2>
     <div class="grid" id="agents"></div>
     <div id="scope-slot"></div>
+    <div id="stopped-wrap" style="display:none; margin-top:34px">
+      <h2>stopped <span class="count" id="stopped-count"></span></h2>
+      <div class="grid" id="stopped"></div>
+    </div>
     <div class="taskbar">
       <h2>tasks <span class="count" id="task-count"></span></h2>
       <form class="composer" id="task-form">
@@ -313,51 +317,60 @@ function rel(ts, now) {
   return `${Math.round(d / 86400)}d ago`;
 }
 
-function renderAgents(state) {
-  const el = $("agents");
+function agentCard(r, state, lastByUser) {
   const now = state.now;
-  $("agent-count").textContent = state.recipients.length ? `· ${state.recipients.length}` : "";
-  if (!state.recipients.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1">No agents registered yet.<br><br>
-      Register one from a tmux pane: <code>agent-msg register</code></div>`;
-    return;
+  const flavor = (r.flavor || "generic").toLowerCase();
+  const icon = FLAVOR_ICON[flavor] || FLAVOR_ICON.generic;
+  const last = lastByUser[r.user_id];
+  let lastLine = `<span class="dir">quiet so far</span>`;
+  if (last) {
+    const dir = last.sender === r.user_id ? `→ ${esc(last.recipient)}` : `← ${esc(last.sender)}`;
+    lastLine = `<span class="dir">${dir} · ${rel(last.ts, now)}:</span> ${esc(last.content)}`;
   }
+  const task = currentTask(state.tasks, r.user_id);
+  const taskLine = task
+    ? `<span class="on">task #${task.id}</span> ${esc(task.title)} · ${task.status.replace("_", " ")}`
+    : `no active task`;
+  return `<div class="card ${r.pane_alive ? "" : "gone"}" data-user="${esc(r.user_id)}">
+    <div class="top">
+      ${avatar(r.user_id)}
+      <div class="who">
+        <div class="name">${esc(r.user_id)}<span class="status ${r.pane_alive ? "live" : "dead"}" title="${r.pane_alive ? "pane alive" : "pane stopped"}"></span></div>
+        <span class="chip">${icon} ${esc(flavor)}</span>
+      </div>
+    </div>
+    <div class="meta">
+      ${r.model ? `<span>model <b>${esc(r.model)}</b></span>` : ""}
+      <span>pane <b>${esc(r.tmux_pane)}</b>${r.pane_alive ? "" : " (stopped)"}</span>
+      <span>joined <b>${rel(r.registered_at, now)}</b></span>
+    </div>
+    <div class="taskline">${taskLine}</div>
+    <div class="last">${lastLine}</div>
+  </div>`;
+}
+
+function renderAgents(state) {
   const lastByUser = {};
   for (const m of state.messages) {
     lastByUser[m.sender] = m;
     lastByUser[m.recipient] = m;
   }
-  el.innerHTML = state.recipients.map(r => {
-    const flavor = (r.flavor || "generic").toLowerCase();
-    const icon = FLAVOR_ICON[flavor] || FLAVOR_ICON.generic;
-    const last = lastByUser[r.user_id];
-    let lastLine = `<span class="dir">quiet so far</span>`;
-    if (last) {
-      const dir = last.sender === r.user_id ? `→ ${esc(last.recipient)}` : `← ${esc(last.sender)}`;
-      lastLine = `<span class="dir">${dir} · ${rel(last.ts, now)}:</span> ${esc(last.content)}`;
-    }
-    const task = currentTask(state.tasks, r.user_id);
-    const taskLine = task
-      ? `<span class="on">task #${task.id}</span> ${esc(task.title)} · ${task.status.replace("_", " ")}`
-      : `no active task`;
-    return `<div class="card ${r.pane_alive ? "" : "gone"}" data-user="${esc(r.user_id)}">
-      <div class="top">
-        ${avatar(r.user_id)}
-        <div class="who">
-          <div class="name">${esc(r.user_id)}<span class="status ${r.pane_alive ? "live" : "dead"}" title="${r.pane_alive ? "pane alive" : "pane gone"}"></span></div>
-          <span class="chip">${icon} ${esc(flavor)}</span>
-        </div>
-      </div>
-      <div class="meta">
-        ${r.model ? `<span>model <b>${esc(r.model)}</b></span>` : ""}
-        <span>pane <b>${esc(r.tmux_pane)}</b></span>
-        <span>joined <b>${rel(r.registered_at, now)}</b></span>
-      </div>
-      <div class="taskline">${taskLine}</div>
-      <div class="last">${lastLine}</div>
-    </div>`;
-  }).join("");
-  el.querySelectorAll(".card").forEach(c =>
+  const running = state.recipients.filter(r => r.pane_alive);
+  const stopped = state.recipients.filter(r => !r.pane_alive);
+
+  $("agent-count").textContent = running.length ? `· ${running.length}` : "";
+  if (!running.length) {
+    $("agents").innerHTML = `<div class="empty" style="grid-column:1/-1">No agents running.<br><br>
+      Register one from a tmux pane: <code>agent-msg register</code></div>`;
+  } else {
+    $("agents").innerHTML = running.map(r => agentCard(r, state, lastByUser)).join("");
+  }
+
+  $("stopped-wrap").style.display = stopped.length ? "" : "none";
+  $("stopped-count").textContent = stopped.length ? `· ${stopped.length}` : "";
+  $("stopped").innerHTML = stopped.map(r => agentCard(r, state, lastByUser)).join("");
+
+  document.querySelectorAll("#agents .card, #stopped .card").forEach(c =>
     c.addEventListener("click", () => togglePeek(c.dataset.user)));
 }
 
@@ -372,7 +385,7 @@ function currentTask(tasks, user) {
 let tasksKey = "";
 function renderTasks(state) {
   $("task-count").textContent = state.tasks.length ? `· ${state.tasks.length}` : "";
-  const agentIds = state.recipients.map(r => r.user_id);
+  const agentIds = state.recipients.filter(r => r.pane_alive).map(r => r.user_id);
   const key = JSON.stringify([state.tasks, agentIds]);
   if (key === tasksKey) return;  // keep selects/buttons stable between changes
   tasksKey = key;
@@ -383,9 +396,11 @@ function renderTasks(state) {
   $("tasks").innerHTML = state.tasks.map(t => {
     const when = new Date(t.created_at * 1000)
       .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const ids = t.assignee && !agentIds.includes(t.assignee)
+      ? agentIds.concat(t.assignee) : agentIds;
     const opts = [`<option value="">unassigned</option>`]
-      .concat(agentIds.map(a =>
-        `<option value="${esc(a)}"${a === t.assignee ? " selected" : ""}>${esc(a)}</option>`))
+      .concat(ids.map(a =>
+        `<option value="${esc(a)}"${a === t.assignee ? " selected" : ""}>${esc(a)}${agentIds.includes(a) ? "" : " (stopped)"}</option>`))
       .join("");
     const buttons = t.status === "done"
       ? `<button class="mini" data-act="open">reopen</button>`
@@ -423,10 +438,11 @@ async function patchTask(id, patch) {
 
 let agentSelKey = "";
 function syncAgentSelects(recipients) {
-  const key = recipients.map(r => r.user_id).join(",");
+  const running = recipients.filter(r => r.pane_alive);
+  const key = running.map(r => r.user_id).join(",");
   if (key === agentSelKey) return;
   agentSelKey = key;
-  const opts = recipients.map(r =>
+  const opts = running.map(r =>
     `<option value="${esc(r.user_id)}">${esc(r.user_id)}</option>`).join("");
   for (const [sel, prefix] of [[$("msg-to"), ""], [$("task-assignee"), `<option value="">unassigned</option>`]]) {
     const keep = sel.value;
