@@ -12,3 +12,6 @@ wheels/
 # Test/runtime artifacts
 .pytest_cache/
 *.sqlite
+
+# Local Claude Code settings
+.claude/settings.local.json
