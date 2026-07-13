@@ -285,7 +285,7 @@ def test_portal_page_served_at_root(client):
     r = client.get("/")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
-    assert "the hive" in r.text
+    assert "agent dashboard" in r.text
     assert "/api/state" in r.text
 
 

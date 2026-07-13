@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>agent-msg · the hive</title>
+<title>agent dashboard</title>
 <style>
   :root {
     --ink: #16120c;
@@ -177,8 +177,8 @@
 <body>
 
 <header>
-  <h1>the hive <span class="amp">&mdash;</span> agent-msg</h1>
-  <span class="sub">observation deck</span>
+  <h1>agent dashboard</h1>
+  <span class="sub">agent-msg</span>
   <div class="right">
     <span id="conn"><span class="beacon"></span><span id="conn-label">watching</span></span>
     <span id="clock"></span>
@@ -187,7 +187,7 @@
 
 <main>
   <section class="agents">
-    <h2>residents <span class="count" id="agent-count"></span></h2>
+    <h2>agents <span class="count" id="agent-count"></span></h2>
     <div class="grid" id="agents"></div>
     <div id="scope-slot"></div>
   </section>
@@ -246,7 +246,7 @@ function renderAgents(state) {
   const now = state.now;
   $("agent-count").textContent = state.recipients.length ? `· ${state.recipients.length}` : "";
   if (!state.recipients.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1">No agents in the hive yet.<br><br>
+    el.innerHTML = `<div class="empty" style="grid-column:1/-1">No agents registered yet.<br><br>
       Register one from a tmux pane: <code>agent-msg register</code></div>`;
     return;
   }

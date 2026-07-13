@@ -114,14 +114,14 @@ agent-msg recipients
 agent-msg messages --limit 20
 ```
 
-## The Hive (Web Portal)
+## Agent Dashboard
 
-The server doubles as a live observation deck. While the server is
-running, open <http://127.0.0.1:8765/> to watch "the hive": a dynamic
-view of every registered agent and the conversations between them,
-refreshed every couple of seconds.
+The server doubles as a live dashboard. While the server is running,
+open <http://127.0.0.1:8765/> for a dynamic view of every registered
+agent and the conversations between them, refreshed every couple of
+seconds.
 
-- **Residents** shows one card per agent: animal avatar, flavor badge
+- **Agents** shows one card per agent: animal avatar, flavor badge
   (claude / codex / pi / hermes / generic), model label, tmux pane, and
   a status dot that turns red when the agent's pane disappears.
 - **Scope** opens when you click an agent card. It is a live capture of
@@ -303,7 +303,7 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | GET    | `/recipients` | -                                                                   |
 | POST   | `/send`       | `{tmux_pane, recipient, content, context?}`                         |
 | GET    | `/messages`   | `?user=<handle>&limit=<n>`; omit `user` for all messages            |
-| GET    | `/`           | the hive web portal (HTML)                                          |
+| GET    | `/`           | agent dashboard (HTML)                                              |
 | GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive` + recent messages, oldest first |
 | GET    | `/api/peek/<handle>` | live text capture of the agent's tmux pane                   |
 
@@ -318,7 +318,7 @@ agent_msg/
   client.py   CLI
   db.py       SQLite layer
   names.py    server-assigned handle pool
-  portal.html the hive web portal (self-contained page served at /)
+  portal.html agent dashboard (self-contained page served at /)
   server.py   FastAPI app, protocol brief, and portal endpoints
   tmux.py     pane detection, delivery, capture, and message formatting
 skills/
