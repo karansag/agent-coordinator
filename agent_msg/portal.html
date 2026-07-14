@@ -331,7 +331,7 @@ function RosterChip({ r, state, selected, unread, ping }) {
   const flavor = (r.flavor || "generic").toLowerCase();
   const sub = task
     ? html`<span class="on">#${task.id}</span> ${task.title}`
-    : r.pane_alive ? "idle" : "stopped";
+    : r.pane_alive ? "running" : "stopped";
   return html`<div class=${`chip-card ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
