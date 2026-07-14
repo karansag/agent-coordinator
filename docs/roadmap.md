@@ -5,11 +5,10 @@ Codex, or otherwise). Last updated 2026-07-13.
 
 ## Deferred features
 
-- **Live visualization of agents working.** Replaces the empty space in
-  the overview above the kanban board. Direction is experimental and
-  not settled: bees, ships, or StarCraft-style units picking up task
-  objects and moving around. Build only after the kanban overview has
-  proven itself in daily use.
+- **Live visualization of agents working.** Direction settled and fully
+  specified in docs/hive-visualization-spec.md (bees carrying task
+  tokens, owner hive, message streaks). Ready to build; follow that
+  spec.
 - **`agent-msg status "one-liner"` self-reports.** Agents summarize
   what they are doing via a CLI command that stores a status line per
   agent. This feeds the visualization above and the roster sublines. No
