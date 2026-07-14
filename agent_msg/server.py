@@ -87,6 +87,12 @@ class TaskUpdateReq(BaseModel):
     assignee: str | None = None
 
 
+class SpawnReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    flavor: Literal["claude", "codex", "generic"] = "generic"
+
+
 def _protocol_brief(user_id: str, peers: list[dict]) -> str:
     """A one-shot primer the agent sees in its register response.
 
@@ -355,6 +361,30 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
         if task["assignee"] and task["assignee"] != before["assignee"]:
             _notify_assignment(task)
         return {"ok": True, "task": task}
+
+    @app.post("/agents/spawn")
+    def agents_spawn(req: SpawnReq):
+        command = tmux.FLAVOR_LAUNCH_COMMANDS.get(req.flavor)
+        pane, err = tmux.spawn_window(command=command)
+        if pane is None:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "could not create tmux window", "detail": err},
+            )
+        user_id = names.pick_unused(conn)
+        db.register(
+            conn,
+            user_id,
+            pane,
+            None,
+            None,
+            req.flavor,
+            None,
+            None,
+            tmux.submit_key_for_flavor(req.flavor),
+        )
+        tmux.set_pane_title(pane, tmux.status_title(user_id, req.flavor))
+        return {"ok": True, "user_id": user_id, "tmux_pane": pane, "flavor": req.flavor}
 
     @app.get("/", response_class=HTMLResponse)
     def portal():

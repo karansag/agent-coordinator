@@ -145,6 +145,65 @@ def deliver(
     return True, None
 
 
+AGENTS_SESSION = "agents"
+
+# What to launch in a freshly spawned pane, per flavor. None means leave
+# the shell as is (a generic terminal agent target).
+FLAVOR_LAUNCH_COMMANDS: dict[str, str | None] = {
+    "claude": "claude",
+    "codex": "codex",
+    "generic": None,
+}
+
+
+def spawn_window(
+    session: str = AGENTS_SESSION, command: str | None = None
+) -> tuple[str | None, str | None]:
+    """Create a detached tmux window (and session if needed) and optionally
+    launch a command in it. Returns (pane_id, error_or_None)."""
+    fmt = "#S:#I.#P"
+    try:
+        has = subprocess.run(
+            ["tmux", "has-session", "-t", session],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if has.returncode != 0:
+            out = subprocess.run(
+                ["tmux", "new-session", "-d", "-s", session,
+                 "-x", "220", "-y", "50", "-P", "-F", fmt],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+        else:
+            out = subprocess.run(
+                ["tmux", "new-window", "-d", "-t", session, "-P", "-F", fmt],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+        pane = out.stdout.strip()
+        if not pane:
+            return None, "tmux did not report a pane id"
+        if command:
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane, command, "C-m"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
+        return pane, None
+    except subprocess.CalledProcessError as e:
+        return None, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return None, str(e)
+
+
 def list_panes() -> set[str]:
     """Return all live pane ids (session:window.pane); empty set if tmux is unavailable."""
     try:

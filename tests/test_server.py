@@ -34,10 +34,19 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(
         tmux, "capture_pane", lambda pane: (f"screen of {pane}\n$ ", None)
     )
+
+    spawns = []
+
+    def fake_spawn_window(session=tmux.AGENTS_SESSION, command=None):
+        spawns.append((session, command))
+        return f"agents:{len(spawns)}.0", None
+
+    monkeypatch.setattr(tmux, "spawn_window", fake_spawn_window)
     app = server.create_app(tmp_path / "db.sqlite")
     c = TestClient(app)
     c._calls = calls
     c._pane_titles = pane_titles
+    c._spawns = spawns
     return c
 
 
@@ -393,6 +402,33 @@ def test_task_status_flow_open_picked_up_done(client):
     assert r.json()["task"]["status"] == "done"
     assert client.patch(f"/tasks/{tid}", json={"status": "bogus"}).status_code == 422
     assert client.patch("/tasks/999", json={"status": "done"}).status_code == 404
+
+
+def test_spawn_creates_window_and_registers_agent(client):
+    r = client.post("/agents/spawn", json={"flavor": "claude"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["tmux_pane"] == "agents:1.0"
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude")
+
+    recipients = client.get("/recipients").json()["recipients"]
+    spawned = next(x for x in recipients if x["user_id"] == body["user_id"])
+    assert spawned["flavor"] == "claude"
+    assert spawned["submit_key"] == "C-m"
+    assert client._pane_titles[-1] == (
+        "agents:1.0", f"agent-msg: {body['user_id']} (claude)"
+    )
+
+
+def test_spawn_generic_launches_no_command(client):
+    r = client.post("/agents/spawn", json={"flavor": "generic"})
+    assert r.status_code == 200
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, None)
+
+
+def test_spawn_rejects_unknown_flavor(client):
+    assert client.post("/agents/spawn", json={"flavor": "skynet"}).status_code == 422
 
 
 def test_reassigning_task_notifies_new_assignee(client):
