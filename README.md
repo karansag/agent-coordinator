@@ -144,8 +144,10 @@ seconds.
   dashboard.
 
 The portal is a single self-contained HTML page served by the same
-FastAPI process, polling `/api/state` and `/api/peek/<handle>`. There
-is no build step.
+FastAPI process, polling `/api/state` and `/api/peek/<handle>`. The UI
+is built with Preact (vendored inline, about 13&nbsp;KB), so renders are
+diffed instead of rebuilt. There is no build step and no external
+requests.
 
 ### Remote access over Tailscale
 
