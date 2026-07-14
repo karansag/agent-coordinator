@@ -124,11 +124,11 @@ seconds.
 The layout has two modes plus a persistent roster:
 
 - **Roster (right sidebar)**: one compact chip per running agent with
-  avatar, flavor icon, liveness dot, and current task. A chip gets an
-  unread badge when messages involving that agent arrive while you are
-  elsewhere. Agents whose tmux pane has disappeared collapse into a
-  small "stopped" group at the bottom and drop out of assignment
-  controls.
+  avatar, flavor, tmux pane, liveness dot, and current task. A chip gets
+  an unread badge when messages involving that agent arrive while you
+  are elsewhere. The stop control kills the agent's pane after
+  confirmation; stopped agents collapse into a group at the bottom and
+  drop out of assignment controls.
 - **Overview mode** (default): a live activity panel shows running
   agents as bees, their task tokens, and message travel above a kanban
   board with columns open / picked up / done. Create and assign tasks
@@ -352,6 +352,7 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | GET    | `/tasks`      | -                                                                   |
 | POST   | `/tasks`      | `{title, description?, assignee?}`; assignment notifies the agent   |
 | PATCH  | `/tasks/<id>` | `{status?, assignee?}`; status is `open`, `picked_up`, or `done`    |
+| POST   | `/agents/<handle>/stop` | kills the registered tmux pane if it is running          |
 | GET    | `/`           | agent dashboard (HTML)                                              |
 | GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive`, recent messages (oldest first), tasks |
 | GET    | `/api/peek/<handle>` | live text capture of the agent's tmux pane                   |

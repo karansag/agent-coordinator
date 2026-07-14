@@ -219,6 +219,23 @@ def list_panes() -> set[str]:
     return {line for line in out.stdout.splitlines() if line}
 
 
+def kill_pane(pane: str) -> tuple[bool, str | None]:
+    """Kill a tmux pane. Returns (ok, error_message_or_None)."""
+    try:
+        subprocess.run(
+            ["tmux", "kill-pane", "-t", pane],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=3,
+        )
+    except subprocess.CalledProcessError as e:
+        return False, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return False, str(e)
+    return True, None
+
+
 def capture_pane(pane: str) -> tuple[str | None, str | None]:
     """Return the pane's visible screen as text. Returns (text, error_or_None)."""
     try:

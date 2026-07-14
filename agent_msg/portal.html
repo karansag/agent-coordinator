@@ -103,7 +103,17 @@
   .chip-card .nm { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.2; }
   .chip-card .sub { font-size: 10px; color: var(--cream-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .chip-card .sub .on { color: var(--honey-dim); }
+  .chip-card .tech { font-size: 9px; color: var(--cream-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip-card .tech .flavor { color: var(--honey-dim); }
   .chip-card .flav { font-size: 12px; color: var(--honey-dim); flex: none; }
+  .chip-card .controls { display: grid; justify-items: end; gap: 2px; flex: none; }
+  button.stop-agent {
+    border: 1px solid var(--line); border-radius: 5px; background: none;
+    color: var(--cream-dim); cursor: pointer; font-family: var(--mono);
+    font-size: 9px; line-height: 1; padding: 3px 6px;
+  }
+  button.stop-agent:hover { color: var(--alert); border-color: var(--alert); }
+  button.stop-agent:disabled { opacity: .5; cursor: wait; }
   .chip-card .badge {
     position: absolute; top: -4px; right: -4px; width: 10px; height: 10px;
     border-radius: 50%; background: var(--honey); box-shadow: 0 0 8px rgba(242,169,59,.9);
@@ -331,20 +341,35 @@ function Avatar({ name, size }) {
 
 /* ---------- roster (right sidebar) ---------- */
 
-function RosterChip({ r, state, selected, unread, ping }) {
+function RosterChip({ r, state, selected, unread, ping, refresh }) {
+  const [stopping, setStopping] = useState(false);
   const task = currentTask(state.tasks, r.user_id);
   const flavor = (r.flavor || "generic").toLowerCase();
   const sub = task
     ? html`<span class="on">#${task.id}</span> ${task.title}`
     : r.pane_alive ? "running" : "stopped";
+  const stop = async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Stop ${r.user_id}? This will kill tmux pane ${r.tmux_pane}.`)) return;
+    setStopping(true);
+    const res = await fetch(`/agents/${encodeURIComponent(r.user_id)}/stop`, { method: "POST" });
+    setStopping(false);
+    if (res.ok) refresh();
+    else alert(`Could not stop ${r.user_id}.`);
+  };
   return html`<div class=${`chip-card ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
     <div class="who">
       <div class="nm">${r.user_id}<span class=${`status ${r.pane_alive ? "live" : "dead"}`}></span></div>
       <div class="sub">${sub}</div>
+      <div class="tech" title=${`${flavor} · ${r.tmux_pane}`}><span class="flavor">${flavor}</span> · ${r.tmux_pane}</div>
     </div>
-    <span class="flav" title=${flavor}>${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic}</span>
+    <div class="controls">
+      <span class="flav" title=${flavor}>${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic}</span>
+      ${r.pane_alive && html`<button type="button" class="stop-agent" disabled=${stopping}
+        title=${`stop ${r.user_id}`} onClick=${stop}>${stopping ? "stopping…" : "stop"}</button>`}
+    </div>
     ${unread && html`<span class="badge" title="new messages"></span>`}
   </div>`;
 }
@@ -379,7 +404,7 @@ function Roster({ state, focusUser, unreadFor, pings, refresh }) {
   const stopped = state.recipients.filter(r => !r.pane_alive);
   const chip = (r) => html`<${RosterChip} key=${r.user_id} r=${r} state=${state}
     selected=${focusUser === r.user_id} unread=${unreadFor(r.user_id)}
-    ping=${!!pings[r.user_id]} />`;
+    ping=${!!pings[r.user_id]} refresh=${refresh} />`;
   return html`<aside class="roster">
     <h2>agents ${running.length > 0 && html`<span class="count">· ${running.length}</span>`}</h2>
     ${running.length === 0

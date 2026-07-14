@@ -42,11 +42,19 @@ def client(tmp_path, monkeypatch):
         return f"agents:{len(spawns)}.0", None
 
     monkeypatch.setattr(tmux, "spawn_window", fake_spawn_window)
+    kills = []
+
+    def fake_kill_pane(pane):
+        kills.append(pane)
+        return True, None
+
+    monkeypatch.setattr(tmux, "kill_pane", fake_kill_pane)
     app = server.create_app(tmp_path / "db.sqlite")
     c = TestClient(app)
     c._calls = calls
     c._pane_titles = pane_titles
     c._spawns = spawns
+    c._kills = kills
     return c
 
 
@@ -429,6 +437,34 @@ def test_spawn_generic_launches_no_command(client):
 
 def test_spawn_rejects_unknown_flavor(client):
     assert client.post("/agents/spawn", json={"flavor": "skynet"}).status_code == 422
+
+
+def test_stop_kills_live_agent_pane(client):
+    user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    r = client.post(f"/agents/{user}/stop")
+    assert r.status_code == 200
+    assert r.json()["already_stopped"] is False
+    assert client._kills == ["0:0.0"]
+
+
+def test_stop_is_idempotent_for_stopped_agent(client):
+    user = client.post("/register", json={"tmux_pane": "0:2.0"}).json()["user_id"]
+    r = client.post(f"/agents/{user}/stop")
+    assert r.status_code == 200
+    assert r.json()["already_stopped"] is True
+    assert client._kills == []
+
+
+def test_stop_rejects_unknown_agent(client):
+    assert client.post("/agents/ghost/stop").status_code == 404
+
+
+def test_stop_reports_tmux_failure(client, monkeypatch):
+    user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    monkeypatch.setattr(tmux, "kill_pane", lambda pane: (False, "permission denied"))
+    r = client.post(f"/agents/{user}/stop")
+    assert r.status_code == 500
+    assert r.json()["detail"]["detail"] == "permission denied"
 
 
 def test_reassigning_task_notifies_new_assignee(client):

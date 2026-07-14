@@ -10,9 +10,6 @@ Codex, or otherwise). Last updated 2026-07-13.
   agent. This feeds the visualization above and the roster sublines. No
   separate LLM harness is needed; the agents are LLMs and can
   self-report.
-- **Stop/kill control for agents.** The dashboard can spawn agents
-  (`POST /agents/spawn`) but not stop them. A stop button should kill
-  the pane and move the chip to the stopped group.
 - **Tailnet auth.** The dashboard is served tailnet-wide via
   `tailscale serve --bg --https=8443 http://127.0.0.1:8765` at
   https://karans-linux.tail7b7d19.ts.net:8443/. The full API (send,

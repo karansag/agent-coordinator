@@ -386,6 +386,28 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
         tmux.set_pane_title(pane, tmux.status_title(user_id, req.flavor))
         return {"ok": True, "user_id": user_id, "tmux_pane": pane, "flavor": req.flavor}
 
+    @app.post("/agents/{user_id}/stop")
+    def agents_stop(user_id: str):
+        recipient = db.get_recipient(conn, user_id)
+        if recipient is None:
+            raise HTTPException(status_code=404, detail={"error": "unknown agent"})
+        pane = recipient["tmux_pane"]
+        if pane not in tmux.list_panes():
+            return {
+                "ok": True, "user_id": user_id, "tmux_pane": pane,
+                "already_stopped": True,
+            }
+        ok, err = tmux.kill_pane(pane)
+        if not ok:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "could not stop tmux pane", "detail": err},
+            )
+        return {
+            "ok": True, "user_id": user_id, "tmux_pane": pane,
+            "already_stopped": False,
+        }
+
     @app.get("/", response_class=HTMLResponse)
     def portal():
         return PORTAL_PATH.read_text()
