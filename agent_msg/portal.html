@@ -174,6 +174,13 @@
   .tcard .foot .mini { margin-left: auto; }
   .colempty { color: var(--cream-dim); font-size: 11px; text-align: center; padding: 14px 0; }
 
+  /* ---------- hive activity ---------- */
+  .hive-panel {
+    height: 262px; margin-bottom: 26px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  .hive-panel canvas { display: block; width: 100%; height: 260px; }
+
   /* ---------- agent focus ---------- */
   .fhead { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
   .fhead .who { min-width: 0; }
@@ -452,8 +459,214 @@ function Kanban({ state, refresh }) {
   </div>`;
 }
 
+function HiveView({ state }) {
+  const canvasRef = useRef(null);
+  const stateRef = useRef(state);
+  const beesRef = useRef(new Map());
+  const streaksRef = useRef([]);
+  const pendingRef = useRef([]);
+  const lastSeenRef = useRef(null);
+  const hoverRef = useRef(null);
+  const drawRef = useRef(null);
+  stateRef.current = state;
+
+  const messages = state.messages || [];
+  const maxId = Math.max(0, ...messages.map(m => m.id));
+  if (lastSeenRef.current === null) lastSeenRef.current = maxId;
+  else if (maxId > lastSeenRef.current) {
+    pendingRef.current.push(...messages.filter(m => m.id > lastSeenRef.current).slice(-8));
+    lastSeenRef.current = maxId;
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let frame = 0;
+    let cssWidth = 0;
+    let lastDraw = 0;
+
+    const hex = (x, y, radius, fill, stroke) => {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3;
+        const px = x + Math.cos(a) * radius;
+        const py = y + Math.sin(a) * radius;
+        i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+      }
+      ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke();
+    };
+    const token = (task, x, y) => {
+      hex(x, y, 8, "rgba(242,169,59,.15)", "#b97f27");
+      ctx.fillStyle = "#f2a93b"; ctx.font = "8px ui-monospace, monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(`#${task.id}`, x, y + .5);
+    };
+    const ensureSize = () => {
+      const width = Math.max(1, canvas.clientWidth);
+      const dpr = devicePixelRatio || 1;
+      if (width !== cssWidth || canvas.width !== Math.round(width * dpr)) {
+        cssWidth = width;
+        canvas.width = Math.round(width * dpr); canvas.height = Math.round(260 * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return width;
+    };
+    const point = (a, b, c, u) => {
+      const v = 1 - u;
+      return { x: v*v*a.x + 2*v*u*c.x + u*u*b.x,
+        y: v*v*a.y + 2*v*u*c.y + u*u*b.y };
+    };
+    const draw = (now, still = false) => {
+      const width = ensureSize();
+      const data = stateRef.current;
+      const running = (data.recipients || []).filter(r => r.pane_alive);
+      const live = new Set(running.map(r => r.user_id));
+      const bees = beesRef.current;
+      for (const name of bees.keys()) if (!live.has(name)) bees.delete(name);
+      ctx.clearRect(0, 0, width, 260);
+
+      const hive = { x: width / 2, y: 233 };
+      ctx.strokeStyle = "#3a2d1a"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(18, 48); ctx.lineTo(Math.min(190, width * .3), 48); ctx.stroke();
+      ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("open", 18, 25);
+      const open = (data.tasks || []).filter(t => t.status === "open" && !t.assignee);
+      open.forEach((t, i) => token(t, 28 + (i % 6) * 25, 38 + Math.floor(i / 6) * 21));
+
+      const done = (data.tasks || []).filter(t => t.status === "done").length;
+      const doneX = width - 28;
+      hex(doneX, 30, 14, "rgba(143,191,111,.15)", "#8fbf6f");
+      ctx.fillStyle = "#8fbf6f"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      ctx.fillText(`done · ${done}`, doneX - 21, 30);
+
+      [[64, 219], [52, 205], [38, 191]].forEach(([w, y]) => {
+        ctx.fillStyle = "#2c2214"; ctx.strokeStyle = "#b97f27";
+        ctx.beginPath(); ctx.roundRect(hive.x - w/2, y, w, 14, 7); ctx.fill(); ctx.stroke();
+      });
+      ctx.fillStyle = "#16120c"; ctx.beginPath();
+      ctx.arc(hive.x, hive.y, 7, Math.PI, 0); ctx.lineTo(hive.x + 7, hive.y + 5);
+      ctx.lineTo(hive.x - 7, hive.y + 5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#f2a93b"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      ctx.fillText("owner", hive.x, 253);
+
+      running.forEach((r, i) => {
+        const name = r.user_id;
+        const seed = hue(name);
+        const homeX = width * .15 + (i / ((running.length - 1) || 1)) * width * .7;
+        const homeY = 100 + seed % 70;
+        const picked = (data.tasks || []).filter(t => t.assignee === name && t.status === "picked_up")
+          .sort((a, b) => b.updated_at - a.updated_at)[0];
+        const assigned = !picked && (data.tasks || []).filter(t => t.assignee === name && t.status === "open")
+          .sort((a, b) => b.updated_at - a.updated_at)[0];
+        const phase = seed / 57;
+        const speed = picked ? 2.5 : 1;
+        const amp = picked ? 26 : 18;
+        const q = still ? 0 : now / 8000 * Math.PI * 2 * speed + phase;
+        const x = homeX + (still ? 0 : Math.sin(q) * amp);
+        const y = homeY + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
+        const dx = still ? 1 : Math.cos(q);
+        const dy = still ? 0 : Math.cos(q * 1.7 + phase) * .94;
+        bees.set(name, { x, y, task: picked || assigned });
+        if (assigned) token(assigned, x + 22, y + Math.sin(q * .8) * 3);
+
+        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx));
+        const flap = still ? 0 : Math.sin(now / 1000 * 30) * .35;
+        ctx.fillStyle = "rgba(240,230,210,.5)";
+        ctx.beginPath(); ctx.ellipse(-2, -7, 6, 3, -.45 - flap, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(-2, 7, 6, 3, .45 + flap, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `hsl(${seed} 42% 58%)`;
+        ctx.beginPath(); ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(22,18,12,.5)";
+        ctx.fillRect(-4, -6, 2.5, 12); ctx.fillRect(2, -6, 2.5, 12);
+        ctx.fillStyle = "#16120c"; ctx.beginPath(); ctx.arc(11, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        if (picked) token(picked, x, y + 16);
+        ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+        ctx.fillText(name, x, y + (picked ? 35 : 19));
+      });
+
+      const entrance = { x: hive.x, y: hive.y - 4 };
+      const endpoint = (name) => name === "owner" ? entrance : (bees.get(name) || entrance);
+      if (!still && pendingRef.current.length) {
+        const born = now;
+        streaksRef.current.push(...pendingRef.current.splice(0, 8).map(m => ({
+          born, a: { ...endpoint(m.sender) }, b: { ...endpoint(m.recipient) }, id: m.id,
+        })));
+      } else if (still) pendingRef.current.length = 0;
+      streaksRef.current = streaksRef.current.filter(s => now - s.born < 900);
+      if (!still) for (const s of streaksRef.current) {
+        const u = Math.min(1, (now - s.born) / 900);
+        const c = { x: (s.a.x + s.b.x) / 2, y: (s.a.y + s.b.y) / 2 - 40 };
+        for (let i = 9; i >= 0; i--) {
+          const p = point(s.a, s.b, c, Math.max(0, u - i * .025));
+          ctx.fillStyle = `rgba(242,169,59,${(10-i) / 13})`;
+          ctx.beginPath(); ctx.arc(p.x, p.y, i ? 1.2 : 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      const hovered = hoverRef.current && bees.get(hoverRef.current);
+      if (hovered) {
+        const title = hovered.task ? ` · ${hovered.task.title}` : "";
+        const label = hoverRef.current + title;
+        ctx.font = "10px ui-monospace, monospace";
+        const w = ctx.measureText(label).width + 12;
+        const tx = Math.max(4, Math.min(width - w - 4, hovered.x - w / 2));
+        const ty = Math.max(4, hovered.y - 31);
+        ctx.fillStyle = "#241c11"; ctx.beginPath(); ctx.roundRect(tx, ty, w, 19, 5); ctx.fill();
+        ctx.strokeStyle = "#3a2d1a"; ctx.stroke();
+        ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(label, tx + 6, ty + 10);
+      }
+    };
+    drawRef.current = draw;
+    const at = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const hit = (e) => {
+      const p = at(e);
+      return [...beesRef.current].find(([, b]) => Math.hypot(p.x - b.x, p.y - b.y) < 16)?.[0] || null;
+    };
+    const move = (e) => {
+      hoverRef.current = hit(e); canvas.style.cursor = hoverRef.current ? "pointer" : "default";
+      if (reduced) draw(performance.now(), true);
+    };
+    const leave = () => { hoverRef.current = null; canvas.style.cursor = "default"; if (reduced) draw(performance.now(), true); };
+    const click = (e) => { const name = hit(e); if (name) location.hash = focusHash(name); };
+    canvas.addEventListener("mousemove", move); canvas.addEventListener("mouseleave", leave);
+    canvas.addEventListener("click", click);
+    if (reduced) draw(performance.now(), true);
+    else {
+      const tick = (now) => {
+        if (!document.hidden && now - lastDraw >= 32) { draw(now); lastDraw = now; }
+        frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+    }
+    return () => {
+      cancelAnimationFrame(frame); drawRef.current = null;
+      canvas.removeEventListener("mousemove", move); canvas.removeEventListener("mouseleave", leave);
+      canvas.removeEventListener("click", click);
+    };
+  }, []);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches && drawRef.current)
+      drawRef.current(performance.now(), true);
+  }, [state]);
+
+  return html`<div class="hive-panel"><canvas ref=${canvasRef}
+    aria-label="Live activity: running agents, tasks, and messages"></canvas></div>`;
+}
+
 function Overview({ state, refresh }) {
-  return html`<${Kanban} state=${state} refresh=${refresh} />`;
+  return html`<div>
+    <h2>activity</h2>
+    <${HiveView} state=${state} />
+    <${Kanban} state=${state} refresh=${refresh} />
+  </div>`;
 }
 
 /* ---------- agent focus mode ---------- */

@@ -129,10 +129,10 @@ The layout has two modes plus a persistent roster:
   elsewhere. Agents whose tmux pane has disappeared collapse into a
   small "stopped" group at the bottom and drop out of assignment
   controls.
-- **Overview mode** (default): a kanban board of tasks with columns
-  open / picked up / done. Create a task, assign it, and the
-  assignment is delivered into the agent's pane with the exact
-  status-update commands to run.
+- **Overview mode** (default): a live activity panel shows running
+  agents as bees, their task tokens, and message travel above a kanban
+  board with columns open / picked up / done. Create and assign tasks
+  from the board; assignments are delivered into the agent's pane.
 - **Agent focus mode** (click a chip, or `#/agent/<handle>`): a live
   capture of that agent's tmux pane with a prompt bar underneath.
   Typing there and pressing Enter sends the message as `owner`, the

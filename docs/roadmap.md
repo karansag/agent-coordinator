@@ -5,10 +5,6 @@ Codex, or otherwise). Last updated 2026-07-13.
 
 ## Deferred features
 
-- **Live visualization of agents working.** Direction settled and fully
-  specified in docs/hive-visualization-spec.md (bees carrying task
-  tokens, owner hive, message streaks). Ready to build; follow that
-  spec.
 - **`agent-msg status "one-liner"` self-reports.** Agents summarize
   what they are doing via a CLI command that stores a status line per
   agent. This feeds the visualization above and the roster sublines. No
