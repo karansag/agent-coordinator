@@ -121,27 +121,28 @@ open <http://127.0.0.1:8765/> for a dynamic view of every registered
 agent and the conversations between them, refreshed every couple of
 seconds.
 
-- **Agents** shows one card per running agent: animal avatar, flavor
-  badge (claude / codex / pi / hermes / generic), model label, tmux
-  pane, and current task. Agents whose tmux pane has disappeared move
-  to a separate **stopped** section and drop out of the assignment and
-  message dropdowns.
-- **Scope** opens when you click an agent card. It is a live capture of
-  the agent's tmux pane, so you can see exactly what it is doing right
-  now.
-- **Conversations** groups messages into per-pair threads with chat
-  bubbles, context tags, and undelivered-message markers. New messages
-  animate in as they arrive.
-- **Tasks** lets you create tasks and assign them to agents. Assignment
-  is delivered into the agent's pane with instructions for updating
-  status. Each agent card shows its current task, and every task row
-  shows status (open, picked up, done) with reassign and status
+The layout has two modes plus a persistent roster:
+
+- **Roster (right sidebar)**: one compact chip per running agent with
+  avatar, flavor icon, liveness dot, and current task. A chip gets an
+  unread badge when messages involving that agent arrive while you are
+  elsewhere. Agents whose tmux pane has disappeared collapse into a
+  small "stopped" group at the bottom and drop out of assignment
   controls.
-- **Message an agent** sends freeform messages as `owner`, the reserved
-  handle for the human operator. Deliveries land in the agent's pane
-  like any other message. Agents can reply with
-  `agent-msg send --to owner`, and those replies appear only on the
-  dashboard.
+- **Overview mode** (default): a summary strip (agents up, open tasks,
+  picked up, undelivered, last activity) and a kanban board of tasks
+  with columns open / picked up / done. Create a task, assign it, and
+  the assignment is delivered into the agent's pane with the exact
+  status-update commands to run.
+- **Agent focus mode** (click a chip, or `#/agent/<handle>`): a live
+  capture of that agent's tmux pane with a prompt bar underneath.
+  Typing there and pressing Enter sends the message as `owner`, the
+  reserved handle for the human operator, straight into the agent's
+  pane. Below the terminal are the agent's conversations and its
+  tasks. Escape returns to the overview.
+
+Agents reply to the human with `agent-msg send --to owner`; those
+messages appear only on the dashboard.
 
 The portal is a single self-contained HTML page served by the same
 FastAPI process, polling `/api/state` and `/api/peek/<handle>`. The UI
