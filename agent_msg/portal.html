@@ -121,20 +121,14 @@
   details.stopped summary::before { content: "▸ "; }
   details.stopped[open] summary::before { content: "▾ "; }
   details.stopped .chip-card { opacity: .5; }
+  form.spawn { display: flex; gap: 8px; align-items: center; margin-top: 20px; }
+  form.spawn select { flex: 1; min-width: 0; }
 
   .empty {
     border: 1px dashed var(--line); border-radius: 10px; padding: 34px; text-align: center;
     color: var(--cream-dim); font-size: 13px;
   }
   .empty code { color: var(--honey); }
-
-  /* ---------- summary strip ---------- */
-  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 30px; }
-  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px 10px; background: var(--ink-2); }
-  .stat .v { font-family: var(--serif); font-style: italic; font-size: 24px; color: var(--cream); line-height: 1.2; }
-  .stat .l { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--cream-dim); margin-top: 2px; }
-  .stat.warn .v { color: var(--alert); }
-  .stat.busy .v { color: var(--honey); }
 
   /* ---------- forms ---------- */
   input[type="text"], select {
@@ -343,7 +337,32 @@ function RosterChip({ r, state, selected, unread, ping }) {
   </div>`;
 }
 
-function Roster({ state, focusUser, unreadFor, pings }) {
+function SpawnControl({ refresh }) {
+  const [flavor, setFlavor] = useState("claude");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const spawn = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr("");
+    const r = await fetch("/agents/spawn", {
+      method: "POST", headers: JSONH, body: JSON.stringify({ flavor }),
+    });
+    if (!r.ok) setErr("spawn failed");
+    setBusy(false);
+    refresh();
+  };
+  return html`<form class="spawn" onSubmit=${spawn}>
+    <select value=${flavor} onChange=${e => setFlavor(e.target.value)}>
+      ${["claude", "codex", "generic"].map(f =>
+        html`<option key=${f} value=${f}>${f}</option>`)}
+    </select>
+    <button class="act" type="submit" disabled=${busy}>${busy ? "spawning…" : "spawn agent"}</button>
+    ${err && html`<span style="color:var(--alert); font-size:11px">${err}</span>`}
+  </form>`;
+}
+
+function Roster({ state, focusUser, unreadFor, pings, refresh }) {
   const running = state.recipients.filter(r => r.pane_alive);
   const stopped = state.recipients.filter(r => !r.pane_alive);
   const chip = (r) => html`<${RosterChip} key=${r.user_id} r=${r} state=${state}
@@ -359,25 +378,11 @@ function Roster({ state, focusUser, unreadFor, pings }) {
       <summary>stopped · ${stopped.length}</summary>
       ${stopped.map(chip)}
     </details>`}
+    <${SpawnControl} refresh=${refresh} />
   </aside>`;
 }
 
 /* ---------- overview mode ---------- */
-
-function SummaryStrip({ state }) {
-  const running = state.recipients.filter(r => r.pane_alive).length;
-  const open = state.tasks.filter(t => t.status === "open").length;
-  const picked = state.tasks.filter(t => t.status === "picked_up").length;
-  const undelivered = state.messages.filter(m => !m.delivered).length;
-  const lastTs = state.messages.length ? state.messages[state.messages.length - 1].ts : null;
-  return html`<div class="strip">
-    <div class="stat"><div class="v">${running}</div><div class="l">agents up</div></div>
-    <div class="stat"><div class="v">${open}</div><div class="l">open tasks</div></div>
-    <div class=${`stat ${picked ? "busy" : ""}`}><div class="v">${picked}</div><div class="l">picked up</div></div>
-    <div class=${`stat ${undelivered ? "warn" : ""}`}><div class="v">${undelivered}</div><div class="l">undelivered</div></div>
-    <div class="stat"><div class="v">${lastTs ? rel(lastTs, state.now) : "never"}</div><div class="l">last activity</div></div>
-  </div>`;
-}
 
 function TaskCard({ t, agentIds, refresh }) {
   const when = new Date(t.created_at * 1000)
@@ -448,10 +453,7 @@ function Kanban({ state, refresh }) {
 }
 
 function Overview({ state, refresh }) {
-  return html`<div>
-    <${SummaryStrip} state=${state} />
-    <${Kanban} state=${state} refresh=${refresh} />
-  </div>`;
+  return html`<${Kanban} state=${state} refresh=${refresh} />`;
 }
 
 /* ---------- agent focus mode ---------- */
@@ -690,7 +692,8 @@ function App() {
         ? html`<${FocusView} user=${focusUser} state=${state} refresh=${poll} freshIds=${freshIds} />`
         : html`<${Overview} state=${state} refresh=${poll} />`}
     </div>
-    <${Roster} state=${state} focusUser=${focusUser} unreadFor=${unreadFor} pings=${pings} />
+    <${Roster} state=${state} focusUser=${focusUser} unreadFor=${unreadFor}
+      pings=${pings} refresh=${poll} />
   </main>`;
 }
 
