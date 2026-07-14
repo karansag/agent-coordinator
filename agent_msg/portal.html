@@ -187,8 +187,13 @@
   .fhead .nm { font-family: var(--serif); font-style: italic; font-size: 26px; }
   .fhead .meta { font-size: 11px; color: var(--cream-dim); margin-top: 2px; }
   .fhead .meta b { color: var(--cream); font-weight: 500; }
-  .fhead .back { margin-left: auto; flex: none; }
   .fhead .inst { font-size: 11px; color: var(--cream-dim); font-style: italic; }
+  button.focus-back {
+    display: block; margin-bottom: 16px; padding: 7px 12px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--ink-2);
+    color: var(--cream); cursor: pointer; font-family: var(--mono); font-size: 12px;
+  }
+  button.focus-back:hover { color: var(--honey); border-color: var(--honey-dim); }
 
   /* ---------- terminal scope ---------- */
   .scope {
@@ -780,6 +785,7 @@ function FocusView({ user, state, refresh, freshIds }) {
     .sort((x, y) => y[y.length - 1].ts - x[x.length - 1].ts);
   const act = async (id, p) => { await patchTask(id, p); refresh(); };
   return html`<div>
+    <button type="button" class="focus-back" onClick=${() => { location.hash = "#/"; }}>← back to overview</button>
     <div class="fhead">
       <${Avatar} name=${user} />
       <div class="who">
@@ -791,7 +797,6 @@ function FocusView({ user, state, refresh, freshIds }) {
         </div>
         ${r.instructions && html`<div class="inst">"${r.instructions}"</div>`}
       </div>
-      <button class="mini back" onClick=${() => { location.hash = "#/"; }}>← overview</button>
     </div>
     <${Scope} user=${user} refresh=${refresh} />
     <h2>conversations ${threads.length > 0 && html`<span class="count">· ${threads.length}</span>`}</h2>
