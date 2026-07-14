@@ -398,8 +398,7 @@ function TasksPanel({ tasks, agents, refresh }) {
             </select>
             ${t.status === "done"
               ? html`<button class="mini" onClick=${() => patch(t.id, { status: "open" })}>reopen</button>`
-              : html`${t.status === "open" && html`<button class="mini" onClick=${() => patch(t.id, { status: "picked_up" })}>pick up</button>`}
-                <button class="mini" onClick=${() => patch(t.id, { status: "done" })}>done</button>`}
+              : html`<button class="mini" onClick=${() => patch(t.id, { status: "done" })}>done</button>`}
           </div>`;
         })}
   </div>`;
@@ -422,6 +421,9 @@ function Composer({ agents, refresh }) {
     setTimeout(() => setStatus(""), 3000);
     refresh();
   };
+  const onKey = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) send(e);
+  };
   return html`<form class="composer" onSubmit=${send}>
     <div class="note">You send as <b>owner</b>, the human in charge of all agents. Messages are delivered straight into the agent's pane.</div>
     <div class="row">
@@ -432,8 +434,8 @@ function Composer({ agents, refresh }) {
       <button class="act" type="submit">send as owner</button>
       <span class="note">${status}</span>
     </div>
-    <textarea placeholder="type a message" value=${text}
-      onInput=${e => setText(e.target.value)}></textarea>
+    <textarea placeholder="type a message (Enter to send, Shift+Enter for a newline)" value=${text}
+      onInput=${e => setText(e.target.value)} onKeyDown=${onKey}></textarea>
   </form>`;
 }
 
