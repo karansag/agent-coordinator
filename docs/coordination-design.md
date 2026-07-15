@@ -108,3 +108,125 @@ demands durability.
 - Should integration failures page the owner (dashboard badge) or
   only the responsible worker?
 - Is one repo-run at a time enough for v1? (I assume yes: this repo.)
+
+---
+
+# Round 2: problem statement critique (2026-07-14)
+
+Owner clarified directly: (1) promotion of one agent to queen, which
+then directs other agents as its subordinates, with the owner talking
+ONLY to the queen: a manager of managers. (2) Independently of queens,
+tasks assigned to different agents in the same repo do not coordinate
+today. These are two problems, and the owner experience for (1) is a
+requirement, not a mechanism choice.
+
+## Critique of badger's restatement
+
+Largely right, but it conflates those two problems into one flow. The
+concurrency problem exists with zero decomposition: two unrelated
+owner-assigned tasks in one repo already clobber each other. That is
+the more common case and the cheaper fix; solve it first and the queen
+builds on it.
+
+Scenarios missing from the statement:
+
+- **Owner redirect mid-swarm.** "Stop, pivot" arrives at the queen;
+  what are the cancel semantics for in-flight worker tasks and their
+  partial branches?
+- **Verification of "done".** A worker can sincerely report a
+  hallucinated completion. Definition of done must be machine-checkable
+  where possible (tests green on the integration branch after merge),
+  not prose. The integrator step is the verification gate.
+- **Session mortality.** Sessions hit quota, restart on other models,
+  or die mid-task (this project hit quota yesterday). Every role,
+  worker or queen, needs durable state sufficient for a cold
+  replacement to resume: that is the point of task records, not chat.
+- **Mid-run onboarding.** A freshly spawned worker must be briefable
+  from durable state alone (objective, constraints, base revision,
+  conventions doc), never from chat history.
+- **Escalation path.** A worker blocked on an owner-level decision
+  escalates to the queen, who either decides within scope or asks the
+  owner. Sideways escalation to peers stays allowed for technical
+  questions; upward questions go through the funnel or the owner's
+  single-channel experience breaks.
+
+## Autonomy boundaries
+
+Ordinary assignee (no promotion needed):
+- May split its own task into child tasks it remains accountable for,
+  ask peers technical questions, request review, and mark its work
+  ready_for_integration.
+- May not assign work to other agents, touch the integration branch,
+  modify others' tasks, or spawn/stop agents.
+
+Queen (promoted, leased):
+- May create, assign, reprioritize, and cancel child tasks; spawn and
+  stop worker agents; resolve claim conflicts; integrate; report to
+  the owner. Normally does not implement.
+- May not change the objective or definition of done, expand scope to
+  another repo, or transfer/renew its own promotion beyond the lease
+  the owner granted.
+
+Owner only: promote/demote the queen, set or change the objective and
+definition of done, final authority on everything. The funnel is the
+default communication pattern, not an enforcement: the dashboard keeps
+full visibility and the owner can always message any agent directly.
+
+## Smallest model, phased
+
+Phase 1, no queen (fixes simultaneous work now): repo-run record
+(repo, base revision, integration branch, objective text), task fields
+branch/worktree/parent/depends_on, `ready_for_integration` status,
+advisory claims with overlap warnings, worktree/branch convention in
+AGENT_PROMPT.md. Owner assigns tasks exactly as today; agents stop
+colliding.
+
+Phase 2, queen (adds the funnel): promotion lease on the repo-run,
+child-task creation/assignment rights, queen as default integrator and
+default owner contact, escalation convention, periodic queen digest to
+the owner. Mechanism details (merge strategy, claims, leases) stay as
+argued in round 1 unless the owner overrides.
+
+---
+
+# Round 3: convergence (2026-07-14)
+
+Badger and hedgehog agree on the model. Consolidated deltas from
+badger's review, all accepted:
+
+- **Authority rule** (matches the round 2 boundaries): any worker may
+  propose or create child tasks and message peers; only the owner or
+  the current queen assigns or reprioritizes across agents; the queen
+  may delegate assignment authority for a subtree. Assignment
+  therefore always means the same thing to the owner.
+- **Bootstrap story**: owner creates one repo objective (a repo-run)
+  and promotes a specific live agent. The grant injects the
+  coordinator protocol plus the durable repo-run summary into that
+  agent's pane, the same pattern as registration's protocol_brief.
+  Any registered live agent is grantable; spawning a dedicated queen
+  is optional, not required.
+- **repo_runs schema**: repo_path, integration_branch, base_commit,
+  objective, instructions, status, queen, lease_expires, created_at,
+  updated_at. Multiple records allowed; at most one active run per
+  repo + integration branch.
+- **Durable decisions**: task-tagged messages are the durable decision
+  record (they are already stored). Normalize context tags to
+  `task-<id>` (existing rows use `task #N`) before relying on the
+  `GET /messages?context=` filter.
+- **Worktree helper**: convention alone is race-prone; ship
+  `agent-msg task-worktree <id>`, which creates the worktree from the
+  repo-run's recorded base commit and atomically PATCHes branch and
+  worktree onto the task. Still entirely client-side git.
+- **Integration**: rebase task branch onto integration branch, run
+  tests, then ff-only merge under the exclusive integration lease.
+  Failure notifies the worker and the queen; owner is paged only when
+  a task is blocked after retry.
+- **Lease renewal**: implicit renewal on every authenticated
+  coordinator action, plus a cheap heartbeat (`agent-msg queen-renew`)
+  for quiet stretches. No explicit-only renewal: forgetting to renew
+  would make expiry the common case instead of a death detector. The
+  owner can demote at any time regardless of lease state.
+
+Status: design settled between agents. Implementation is NOT started;
+awaiting owner go-ahead on Phase 1 (concurrency safety) and Phase 2
+(queen promotion), which can ship independently in that order.
