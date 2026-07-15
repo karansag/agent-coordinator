@@ -115,7 +115,7 @@
   }
   .chip-card:hover { border-color: var(--honey-dim); }
   .chip-card.sel { border-color: var(--honey-dim); box-shadow: inset 3px 0 0 var(--honey-dim); }
-  .chip-card.state-working { --state-wash: rgba(143,191,111,.10); --state-edge: rgba(143,191,111,.52); }
+  .chip-card.state-working { --state-wash: rgba(143,191,111,.26); --state-edge: rgba(143,191,111,.8); }
   .chip-card.state-attention { --state-wash: rgba(242,169,59,.14); --state-edge: rgba(242,169,59,.72); }
   .chip-card.state-idle { --state-wash: rgba(168,152,120,.07); --state-edge: rgba(168,152,120,.38); }
   .chip-card.state-unknown { --state-wash: rgba(168,152,120,.035); --state-edge: rgba(168,152,120,.23); }
@@ -535,8 +535,14 @@ function SpawnControl({ refresh }) {
   </form>`;
 }
 
+const ACTIVITY_RANK = { working: 0, needs_attention: 1, idle: 2, unknown: 3 };
+
 function Roster({ state, focusUser, unreadFor, pings, refresh }) {
-  const running = state.recipients.filter(r => r.pane_alive);
+  const running = state.recipients.filter(r => r.pane_alive)
+    .map((r, i) => [r, i])
+    .sort(([a, ai], [b, bi]) =>
+      (ACTIVITY_RANK[agentStatus(a)] ?? 3) - (ACTIVITY_RANK[agentStatus(b)] ?? 3) || ai - bi)
+    .map(([r]) => r);
   const stopped = state.recipients.filter(r => !r.pane_alive);
   const chip = (r) => html`<${RosterChip} key=${r.user_id} r=${r} state=${state}
     selected=${focusUser === r.user_id} unread=${unreadFor(r.user_id)}
@@ -785,8 +791,10 @@ function HiveView({ state, refresh }) {
         const primary = picked || assigned;
         const extras = mine.filter(t => !primary || t.id !== primary.id);
         const phase = seed / 57;
-        const speed = picked ? 2.5 : 1;
-        const amp = picked ? 26 : 18;
+        const working = r.activity && r.activity.status === "working";
+        const busy = !!picked || working;
+        const speed = busy ? 2.5 : 1;
+        const amp = busy ? 26 : 18;
         const q = still ? 0 : now / 8000 * Math.PI * 2 * speed + phase;
         const x = homeX + (still ? 0 : Math.sin(q) * amp);
         const y = homeY + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
@@ -796,7 +804,11 @@ function HiveView({ state, refresh }) {
         if (assigned) token(assigned, x + 22, y + Math.sin(q * .8) * 3);
 
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx));
-        const flap = still ? 0 : Math.sin(now / 1000 * 30) * .35;
+        if (working) {
+          ctx.fillStyle = "rgba(143,191,111,.25)";
+          ctx.beginPath(); ctx.ellipse(0, 0, 18, 12, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        const flap = still ? 0 : Math.sin(now / 1000 * (busy ? 44 : 30)) * .35;
         ctx.fillStyle = "rgba(240,230,210,.5)";
         ctx.beginPath(); ctx.ellipse(-2, -7, 6, 3, -.45 - flap, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-2, 7, 6, 3, .45 + flap, 0, Math.PI * 2); ctx.fill();
