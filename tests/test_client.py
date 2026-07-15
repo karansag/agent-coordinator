@@ -68,6 +68,8 @@ def test_deliver_uses_configured_submit_key(monkeypatch):
         return SimpleNamespace(stdout="")
 
     monkeypatch.setattr(tmux.subprocess, "run", fake_run)
+    monkeypatch.setattr(tmux, "_input_signature", lambda pane: None)
+    monkeypatch.setattr(tmux.time, "sleep", lambda seconds: None)
 
     assert tmux.deliver("session-a:9.0", "hello", submit_key="Enter", flavor="pi") == (
         True,
@@ -77,6 +79,49 @@ def test_deliver_uses_configured_submit_key(monkeypatch):
         ["tmux", "send-keys", "-t", "session-a:9.0", "-l", "hello"],
         ["tmux", "send-keys", "-t", "session-a:9.0", "Enter"],
     ]
+
+
+def test_deliver_retries_submit_once_when_composer_is_unchanged(monkeypatch):
+    calls = []
+    signature = (17, 8, "❯ [agent-msg from manatee] hello")
+
+    def fake_run(cmd, capture_output, text, check, timeout):
+        calls.append(cmd)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(tmux.subprocess, "run", fake_run)
+    monkeypatch.setattr(tmux, "_input_signature", lambda pane: signature)
+    monkeypatch.setattr(tmux.time, "sleep", lambda seconds: None)
+
+    assert tmux.deliver(
+        "session-a:9.0", "[agent-msg from manatee] hello", submit_key="Enter"
+    ) == (True, None)
+    assert calls == [
+        ["tmux", "send-keys", "-t", "session-a:9.0", "-l", "[agent-msg from manatee] hello"],
+        ["tmux", "send-keys", "-t", "session-a:9.0", "Enter"],
+        ["tmux", "send-keys", "-t", "session-a:9.0", "Enter"],
+    ]
+
+
+def test_deliver_does_not_retry_after_composer_changes(monkeypatch):
+    calls = []
+    signatures = iter([
+        (17, 8, "❯ [agent-msg from manatee] hello"),
+        (2, 9, "❯"),
+    ])
+
+    def fake_run(cmd, capture_output, text, check, timeout):
+        calls.append(cmd)
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(tmux.subprocess, "run", fake_run)
+    monkeypatch.setattr(tmux, "_input_signature", lambda pane: next(signatures))
+    monkeypatch.setattr(tmux.time, "sleep", lambda seconds: None)
+
+    assert tmux.deliver(
+        "session-a:9.0", "[agent-msg from manatee] hello", submit_key="Enter"
+    ) == (True, None)
+    assert calls.count(["tmux", "send-keys", "-t", "session-a:9.0", "Enter"]) == 1
 
 
 def test_cmd_register_uses_detected_current_pane(monkeypatch, capsys):

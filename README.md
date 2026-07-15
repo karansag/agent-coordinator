@@ -220,6 +220,11 @@ Then it runs `tmux send-keys -l <text>` against the recipient's pane,
 followed by the configured submit key. Codex/Pi default to `Enter`;
 Claude/Hermes default to `C-m`.
 
+After submission, the server briefly checks the tmux cursor row. If the exact
+input and cursor are still unchanged in the composer, it retries the submit
+key once without injecting the message again. Configure the check delay with
+`AGENT_MSG_SUBMIT_VERIFY_DELAY` (default 1.5 seconds).
+
 Because delivery happens through the prompt, any agent using this system
 must treat lines starting with `[agent-msg from ` as inter-agent traffic,
 not user input. [AGENT_PROMPT.md](./AGENT_PROMPT.md) is written for that

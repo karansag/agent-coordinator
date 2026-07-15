@@ -45,6 +45,8 @@ FLAVOR_SUBMIT_DELAYS = {
     "codex": 0.2,
 }
 
+SUBMIT_VERIFY_DELAY = float(os.environ.get("AGENT_MSG_SUBMIT_VERIFY_DELAY", "1.5"))
+
 
 def _has_label_token(label: str, token: str) -> bool:
     return (
@@ -133,6 +135,44 @@ def rename_window(pane: str, name: str) -> tuple[bool, str | None]:
     return True, None
 
 
+def _input_signature(pane: str) -> tuple[int, int, str] | None:
+    """Return cursor position and the visible row under it.
+
+    A message that remains in an interactive agent's composer after submit
+    keeps this signature unchanged. Unsupported panes simply disable the
+    retry rather than failing delivery.
+    """
+    try:
+        pos = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", pane, "#{cursor_x}\t#{cursor_y}"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+        x_text, y_text = pos.stdout.strip().split("\t", 1)
+        x, y = int(x_text), int(y_text)
+        screen = subprocess.run(
+            ["tmux", "capture-pane", "-p", "-t", pane],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=3,
+        )
+    except (ValueError, subprocess.SubprocessError, FileNotFoundError):
+        return None
+    rows = screen.stdout.splitlines()
+    if y < 0 or y >= len(rows):
+        return None
+    return x, y, rows[y].rstrip()
+
+
+def _signature_contains_tail(signature: tuple[int, int, str], injected: str) -> bool:
+    expected = re.sub(r"\s+", " ", injected).strip()[-32:]
+    visible = re.sub(r"\s+", " ", signature[2]).strip()
+    return bool(expected) and visible.endswith(expected)
+
+
 def deliver(
     pane: str,
     text: str,
@@ -154,9 +194,9 @@ def deliver(
             check=True,
             timeout=5,
         )
-        delay = submit_delay_for_flavor(flavor)
-        if delay > 0:
-            time.sleep(delay)
+        delay = max(0.05, submit_delay_for_flavor(flavor))
+        time.sleep(delay)
+        before_submit = _input_signature(pane)
         subprocess.run(
             ["tmux", "send-keys", "-t", pane, submit_key],
             capture_output=True,
@@ -164,6 +204,21 @@ def deliver(
             check=True,
             timeout=5,
         )
+        time.sleep(SUBMIT_VERIFY_DELAY)
+        after_submit = _input_signature(pane)
+        if (
+            before_submit is not None
+            and after_submit == before_submit
+            and _signature_contains_tail(after_submit, injected)
+        ):
+            # Retry only the submit key once; re-injecting would duplicate text.
+            subprocess.run(
+                ["tmux", "send-keys", "-t", pane, submit_key],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            )
     except subprocess.CalledProcessError as e:
         return False, e.stderr.strip() or str(e)
     except (subprocess.SubprocessError, FileNotFoundError) as e:
