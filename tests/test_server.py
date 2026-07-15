@@ -343,6 +343,7 @@ def test_portal_queen_promotion_contract(client):
     assert "queen-status" in portal
     assert "agent-msg task-create" in portal
     assert "Promote ${r.user_id} to Queen" in portal
+    assert 'promoted ? "sent ✓" : "promote"' in portal
 
 
 def test_portal_dead_pane_overrides_stale_activity(client):

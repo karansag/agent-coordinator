@@ -495,7 +495,7 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       <span class="flav" title=${flavor}>${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic}</span>
       ${r.pane_alive && html`<button type="button" class="queen-agent" disabled=${promoting}
         title=${`promote ${r.user_id} to Queen`} aria-label=${`Promote ${r.user_id} to Queen`}
-        onClick=${promote}>${promoting ? "sending…" : promoted ? "queen ✓" : "♛ queen"}</button>`}
+        onClick=${promote}>${promoting ? "sending…" : promoted ? "sent ✓" : "promote"}</button>`}
       ${r.pane_alive && html`<button type="button" class="stop-agent" disabled=${stopping}
         title=${`stop ${r.user_id}`} onClick=${stop}>${stopping ? "stopping…" : "stop"}</button>`}
     </div>
