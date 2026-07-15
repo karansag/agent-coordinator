@@ -230,3 +230,34 @@ badger's review, all accepted:
 Status: design settled between agents. Implementation is NOT started;
 awaiting owner go-ahead on Phase 1 (concurrency safety) and Phase 2
 (queen promotion), which can ship independently in that order.
+
+---
+
+# Round 4: actor identity on mutations (2026-07-14)
+
+Badger's finding, accepted: task mutations (POST /tasks, PATCH
+/tasks/<id>) carry no actor, so the authority split and implicit lease
+renewal cannot be attributed, let alone checked. Convention-only
+authority is rejected; v1 uses actor-bearing mutations:
+
+- Every task mutation and coordination call carries an actor: either
+  `tmux_pane` (resolved server-side to the registered agent, exactly
+  as /send does) or `actor: "owner"` (used by the dashboard's own
+  requests). Requests with neither are rejected.
+- **Attribution from Phase 1, enforcement from Phase 2.** Phase 1
+  records who did what; nothing is denied. Phase 2 enforces the
+  authority split only for tasks belonging to an active repo-run:
+  assignment/reprioritization requires owner or the run's queen (or
+  delegated subtree authority); integration status transitions require
+  the integration lease holder; a worker may still mutate its own
+  task's status.
+- Each mutation appends a compact task_events row (task_id, actor,
+  change, ts). This, plus task-tagged messages, is what a replacement
+  queen resumes from. The event log also powers the dashboard's
+  legibility requirement.
+- Queen heartbeat and every coordinator action resolve the caller's
+  registered pane before renewing the lease.
+- Explicitly acknowledged: this is logical identity for attribution
+  and workflow, not security. A local caller can claim any pane or the
+  owner actor until the tailnet auth roadmap item lands; when it does,
+  owner routes get authenticated first.
