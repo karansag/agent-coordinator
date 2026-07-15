@@ -17,6 +17,12 @@
     --cream-dim: #a89878;
     --moss: #8fbf6f;
     --alert: #e06c55;
+    /* One color per activity state, used everywhere a state appears. */
+    --state-working: #8fbf6f;
+    --state-attention: #f2a93b;
+    --state-idle: #a89878;
+    --state-unknown: #a89878;
+    --state-stopped: #e06c55;
     --mono: ui-monospace, "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Consolas, monospace;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
   }
@@ -81,8 +87,16 @@
   .hex .mono2 { font-family: var(--serif); font-style: italic; color: var(--ink); font-size: 20px; }
   .hex.small .mono2 { font-size: 13px; }
   .status { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-left: 7px; vertical-align: 2px; }
-  .status.live { background: var(--moss); box-shadow: 0 0 6px rgba(143,191,111,.8); }
-  .status.dead { background: var(--alert); }
+  /* Five activity states. Unknown is a hollow ring so it stays distinct
+     from idle beyond color alone. */
+  .status.working { background: var(--state-working); box-shadow: 0 0 6px rgba(143,191,111,.8); }
+  .status.attention { background: var(--state-attention); animation: statepulse 2.4s infinite; }
+  .status.idle { background: var(--state-idle); }
+  .status.stopped { background: var(--state-stopped); }
+  .status.unknown { background: transparent; box-shadow: inset 0 0 0 1px var(--state-unknown); }
+  @keyframes statepulse { 0% { box-shadow: 0 0 0 0 rgba(242,169,59,.5); } 70% { box-shadow: 0 0 0 6px rgba(242,169,59,0); } 100% { box-shadow: 0 0 0 0 rgba(242,169,59,0); } }
+  .stateword { font-size: 11px; }
+  .attn { color: var(--state-attention); }
   .chip {
     display: inline-block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
     border: 1px solid var(--line); border-radius: 20px; padding: 1px 9px; color: var(--honey);
@@ -328,6 +342,24 @@ const PEEK_MS = 2000;
 const JSONH = { "content-type": "application/json" };
 
 const FLAVOR_ICON = { claude: "✳", codex: "◇", pi: "π", hermes: "☿", generic: "▪" };
+
+// Activity state -> dot class, display word, and color. One color per
+// state, matching the --state-* CSS custom properties.
+const STATE = {
+  working:         { cls: "working",   word: "working",         color: "var(--state-working)" },
+  needs_attention: { cls: "attention", word: "needs attention", color: "var(--state-attention)" },
+  idle:            { cls: "idle",      word: "idle",            color: "var(--state-idle)" },
+  unknown:         { cls: "unknown",   word: "unknown",         color: "var(--state-unknown)" },
+  stopped:         { cls: "stopped",   word: "stopped",         color: "var(--state-stopped)" },
+};
+// Prefer the monitor's classification; fall back to raw liveness before it
+// has data (a dead pane still reads "stopped", a live one "unknown").
+function agentStatus(r) {
+  if (!r.pane_alive) return "stopped";
+  const s = r.activity && r.activity.status;
+  if (s && s !== "unknown") return s;
+  return "unknown";
+}
 const ANIMAL_EMOJI = {
   otter: "\u{1F9A6}", badger: "\u{1F9A1}", panda: "\u{1F43C}", raccoon: "\u{1F99D}",
   hedgehog: "\u{1F994}", viper: "\u{1F40D}", gecko: "\u{1F98E}", newt: "\u{1F98E}",
@@ -393,9 +425,15 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
   const [promoted, setPromoted] = useState(false);
   const task = currentTask(state.tasks, r.user_id);
   const flavor = (r.flavor || "generic").toLowerCase();
-  const sub = task
-    ? html`<span class="on">#${task.id}</span> ${task.title}`
-    : r.pane_alive ? "running" : "stopped";
+  const status = agentStatus(r);
+  const st = STATE[status] || STATE.unknown;
+  const detail = r.activity && r.activity.detail;
+  const attention = status === "needs_attention";
+  const sub = attention
+    ? html`<span class="attn" title=${detail || "needs attention"}>${detail || "needs attention"}</span>`
+    : task
+      ? html`<span class="on">#${task.id}</span> ${task.title}`
+      : html`<span class="stateword" style=${`color:${st.color}`}>${st.word}</span>`;
   const stop = async (e) => {
     e.stopPropagation();
     if (!confirm(`Stop ${r.user_id}? This will kill tmux pane ${r.tmux_pane}.`)) return;
@@ -449,7 +487,7 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
     <div class="who">
-      <div class="nm">${r.user_id}<span class=${`status ${r.pane_alive ? "live" : "dead"}`}></span></div>
+      <div class="nm">${r.user_id}<span class=${`status ${st.cls}`} title=${st.word}></span></div>
       <div class="sub">${sub}</div>
       <div class="tech" title=${`${flavor} · ${r.tmux_pane}`}><span class="flavor">${flavor}</span> · ${r.tmux_pane}</div>
     </div>
@@ -461,7 +499,7 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       ${r.pane_alive && html`<button type="button" class="stop-agent" disabled=${stopping}
         title=${`stop ${r.user_id}`} onClick=${stop}>${stopping ? "stopping…" : "stop"}</button>`}
     </div>
-    ${unread && html`<span class="badge" title="new messages"></span>`}
+    ${(unread || attention) && html`<span class="badge" title=${attention ? "needs attention" : "new messages"}></span>`}
   </div>`;
 }
 
@@ -768,6 +806,10 @@ function HiveView({ state, refresh }) {
         ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
         ctx.fillText(name, x, y + (picked ? 35 : 19));
+        if (r.activity && r.activity.status === "needs_attention") {
+          ctx.fillStyle = "#f2a93b"; ctx.font = "bold 13px ui-monospace, monospace";
+          ctx.textBaseline = "alphabetic"; ctx.fillText("!", x, y - 14);
+        }
       });
 
       const dropTarget = dropTargetRef.current && bees.get(dropTargetRef.current);
@@ -1135,6 +1177,9 @@ function FocusView({ user, state, refresh, freshIds }) {
   if (!r) return html`<div class="empty">No agent named "${user}".
     <br /><br /><button class="mini" onClick=${() => { location.hash = "#/"; }}>back to overview</button></div>`;
   const flavor = (r.flavor || "generic").toLowerCase();
+  const status = agentStatus(r);
+  const st = STATE[status] || STATE.unknown;
+  const detail = r.activity && r.activity.detail;
   const myTasks = state.tasks.filter(t => t.assignee === user);
   const agentIds = state.recipients.filter(x => x.pane_alive).map(x => x.user_id);
   const taskIds = agentIds.includes(user) ? agentIds : agentIds.concat(user);
@@ -1155,11 +1200,12 @@ function FocusView({ user, state, refresh, freshIds }) {
     <div class="fhead">
       <${Avatar} name=${user} />
       <div class="who">
-        <div class="nm">${user}<span class=${`status ${r.pane_alive ? "live" : "dead"}`}></span></div>
+        <div class="nm">${user}<span class=${`status ${st.cls}`} title=${st.word}></span></div>
         <div class="meta">
           <span class="chip">${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic} ${flavor}</span>
           ${r.model && html` <b>${r.model}</b>`} · pane <b>${r.tmux_pane}</b>${r.pane_alive ? "" : " (stopped)"}
           · joined ${rel(r.registered_at, state.now)}
+          · <span style=${`color:${st.color}`}>${st.word}</span>${status === "needs_attention" && detail ? html` <span class="attn">${detail}</span>` : ""}
         </div>
         ${r.instructions && html`<div class="inst">"${r.instructions}"</div>`}
       </div>

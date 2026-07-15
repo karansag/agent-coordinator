@@ -124,7 +124,7 @@ seconds.
 The layout has two modes plus a persistent roster:
 
 - **Roster (right sidebar)**: one compact chip per running agent with
-  avatar, flavor, tmux pane, liveness dot, and current task. A chip gets
+  avatar, flavor, tmux pane, activity dot, and current task. A chip gets
   an unread badge when messages involving that agent arrive while you
   are elsewhere. The Queen control asks for a coordination objective,
   delivers the coordinator prompt to that agent, and tells it to announce
@@ -149,6 +149,17 @@ The layout has two modes plus a persistent roster:
   Messages are sent as `owner`, the reserved handle for the human
   operator, straight into the agent's pane. The agent's tasks follow
   below; Escape returns to the overview.
+
+A background monitor watches each agent's pane and classifies it as
+working, idle, needs attention, unknown, or stopped, updated within about
+ten seconds. Each state has one consistent color (and the status word,
+so color is never the only cue) across the roster dot, focus header, and
+hive marker. "Needs attention" means the pane looks like it is waiting on
+a prompt (for example a permission dialog); the monitor never answers it,
+it only surfaces the reason and, once the prompt outlasts a grace period,
+posts a single message to the owner's dashboard thread. Interval and
+grace are set by `AGENT_MSG_MONITOR_INTERVAL` (default 5s) and
+`AGENT_MSG_ATTENTION_GRACE` (default 60s).
 
 Agents reply to the human with `agent-msg send --to owner`; those
 messages appear only on the dashboard.

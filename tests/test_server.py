@@ -56,7 +56,7 @@ def client(tmp_path, monkeypatch):
         return True, None
 
     monkeypatch.setattr(tmux, "kill_pane", fake_kill_pane)
-    app = server.create_app(tmp_path / "db.sqlite")
+    app = server.create_app(tmp_path / "db.sqlite", monitor=False)
     c = TestClient(app)
     c._calls = calls
     c._pane_titles = pane_titles
@@ -345,6 +345,11 @@ def test_portal_queen_promotion_contract(client):
     assert "Promote ${r.user_id} to Queen" in portal
 
 
+def test_portal_dead_pane_overrides_stale_activity(client):
+    portal = client.get("/").text
+    assert 'if (!r.pane_alive) return "stopped";' in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]
@@ -360,6 +365,28 @@ def test_state_reports_agents_liveness_and_ordered_messages(client):
     assert alive[b] is False  # pane 0:9.0 is not in the fake live-pane set
     assert [m["content"] for m in state["messages"]] == ["m0", "m1"]
     assert state["now"] >= state["messages"][-1]["ts"]
+
+
+def test_state_defaults_activity_to_unknown_without_monitor_data(client):
+    user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    state = client.get("/api/state").json()
+    act = next(r["activity"] for r in state["recipients"] if r["user_id"] == user)
+    assert act == {"status": "unknown", "detail": None, "since": None}
+
+
+def test_state_carries_seeded_activity(client):
+    user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
+    client.app.state.activity_registry[user] = {
+        "hash": "abc", "changed_at": 1.0, "status": "needs_attention",
+        "detail": "Do you want to proceed?", "since": 2.0, "notified": True,
+    }
+    state = client.get("/api/state").json()
+    act = next(r["activity"] for r in state["recipients"] if r["user_id"] == user)
+    assert act == {
+        "status": "needs_attention",
+        "detail": "Do you want to proceed?",
+        "since": 2.0,
+    }
 
 
 def test_peek_returns_pane_capture(client):

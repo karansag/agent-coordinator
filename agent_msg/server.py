@@ -3,8 +3,12 @@ plus the live web portal at / (backed by /api/state and /api/peek)."""
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
@@ -12,7 +16,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import db, names, tmux
+from . import activity, db, names, tmux
+
+log = logging.getLogger("agent_msg.monitor")
+
+# Default activity shown when the monitor is off or hasn't observed an agent
+# yet. The dashboard must tolerate this shape.
+UNKNOWN_ACTIVITY = {"status": "unknown", "detail": None, "since": None}
 
 DB_PATH = Path(os.environ.get("AGENT_MSG_DB", "~/.agent-msg/db.sqlite")).expanduser()
 PORTAL_PATH = Path(__file__).parent / "portal.html"
@@ -151,9 +161,67 @@ def _protocol_brief(user_id: str, peers: list[dict]) -> str:
     )
 
 
-def create_app(db_path: Path = DB_PATH) -> FastAPI:
-    app = FastAPI(title="agent-msg", version="0.1.0")
+def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
     conn = db.connect(db_path)
+
+    # Per-agent activity state, mutated by the monitor loop and read by
+    # /api/state. Keyed by user_id; see agent_msg.activity.step for the shape.
+    registry: dict[str, dict] = {}
+    interval = float(os.environ.get("AGENT_MSG_MONITOR_INTERVAL", "5.0"))
+    grace = float(os.environ.get("AGENT_MSG_ATTENTION_GRACE", "60.0"))
+
+    async def _monitor_tick():
+        recipients = db.list_recipients(conn)
+        live_panes = tmux.list_panes()
+        observations = []
+        for r in recipients:
+            pane = r["tmux_pane"]
+            alive = pane in live_panes
+            capture = None
+            if alive:
+                # Subprocess capture must not block the event loop.
+                text, err = await asyncio.to_thread(tmux.capture_pane, pane)
+                capture = text if err is None else None
+            observations.append(
+                activity.Observation(r["user_id"], r.get("flavor"), alive, capture)
+            )
+        notes = activity.step(registry, observations, time.time(), interval, grace)
+        for note in notes:
+            db.record_message(
+                conn,
+                sender=note.user_id,
+                recipient=OWNER,
+                context="attention",
+                content=f"needs attention: {note.detail}",
+                delivered=True,
+                delivery_error=None,
+            )
+
+    async def _monitor_loop():
+        while True:
+            try:
+                await _monitor_tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # A failed tick is logged and skipped, never fatal to the loop.
+                log.exception("monitor tick failed")
+            await asyncio.sleep(interval)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        task = asyncio.create_task(_monitor_loop()) if monitor else None
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    app = FastAPI(title="agent-msg", version="0.1.0", lifespan=lifespan)
+    # Same dict the monitor loop mutates; exposed so tests can seed it.
+    app.state.activity_registry = registry
 
     @app.get("/health")
     def health():
@@ -426,6 +494,12 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
         recipients = db.list_recipients(conn)
         for r in recipients:
             r["pane_alive"] = r["tmux_pane"] in live_panes
+            row = registry.get(r["user_id"])
+            r["activity"] = (
+                {"status": row["status"], "detail": row["detail"], "since": row["since"]}
+                if row
+                else dict(UNKNOWN_ACTIVITY)
+            )
         msgs = db.fetch_messages(conn, None, limit)
         msgs.reverse()  # oldest first for thread rendering
         return {

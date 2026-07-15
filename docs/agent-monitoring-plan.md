@@ -114,11 +114,15 @@ in this plan depends on it.
 
 ## Phasing
 
-1. Poll loop + classification + `/api/state` + chips/focus header
-   (server: activity.py, loop, state field; dashboard: status
+1. **Done.** Poll loop + classification + `/api/state` + chips/focus
+   header (server: activity.py, loop, state field; dashboard: status
    rendering; tests for classification and state plumbing).
-2. Attention notifications with grace period and debounce.
+2. **Done.** Attention notifications with grace period and debounce.
 3. Prompt policies with allowlist auto-accept and audit messages.
+   Out of scope by owner decision; not built.
+
+Phases 1 and 2 were implemented together per
+docs/monitoring-implementation-spec.md.
 
 Each phase is independently shippable and reviewable. Implementation
 assignment is the owner's call (recent pattern: badger implements,
