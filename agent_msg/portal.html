@@ -176,6 +176,8 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
     background: var(--panel); animation: rise .3s ease backwards;
   }
+  .tcard[draggable="true"] { cursor: grab; }
+  .tcard.dragging { opacity: .45; cursor: grabbing; border-style: dashed; border-color: var(--honey-dim); }
   .col.done .tcard { opacity: .6; }
   .tcard .t { font-size: 12.5px; }
   .tcard .meta { font-size: 10px; color: var(--cream-dim); margin-top: 3px; }
@@ -299,6 +301,10 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
 </style>
 </head>
 <body>
@@ -451,12 +457,23 @@ function Roster({ state, focusUser, unreadFor, pings, refresh }) {
 /* ---------- overview mode ---------- */
 
 function TaskCard({ t, agentIds, refresh }) {
+  const [dragging, setDragging] = useState(false);
   const when = new Date(t.created_at * 1000)
     .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const ids = t.assignee && !agentIds.includes(t.assignee)
     ? agentIds.concat(t.assignee) : agentIds;
   const act = async (p) => { await patchTask(t.id, p); refresh(); };
-  return html`<div class="tcard">
+  const draggable = t.status !== "done";
+  const dragStart = (e) => {
+    if (!draggable) return;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-agent-msg-task", String(t.id));
+    e.dataTransfer.setData("text/plain", String(t.id));
+    setDragging(true);
+  };
+  return html`<div class=${`tcard ${dragging ? "dragging" : ""}`} draggable=${draggable}
+      onDragStart=${dragStart} onDragEnd=${() => setDragging(false)}
+      title=${draggable ? "Drag this task onto a live bee to assign it" : "Reopen this task before assigning it by drag"}>
     <div class="t">${t.title}</div>
     <div class="meta">#${t.id} · created ${when}${t.description ? ` · ${t.description}` : ""}${t.worktree ? ` · worktree ${t.worktree}` : ""}</div>
     <div class="foot">
@@ -518,7 +535,7 @@ function Kanban({ state, refresh }) {
   </div>`;
 }
 
-function HiveView({ state }) {
+function HiveView({ state, refresh }) {
   const canvasRef = useRef(null);
   const stateRef = useRef(state);
   const beesRef = useRef(new Map());
@@ -526,7 +543,10 @@ function HiveView({ state }) {
   const pendingRef = useRef([]);
   const lastSeenRef = useRef(null);
   const hoverRef = useRef(null);
+  const dragTaskRef = useRef(null);
+  const dropTargetRef = useRef(null);
   const drawRef = useRef(null);
+  const [dropStatus, setDropStatus] = useState("");
   stateRef.current = state;
 
   const messages = state.messages || [];
@@ -647,6 +667,28 @@ function HiveView({ state }) {
         ctx.fillText(name, x, y + (picked ? 35 : 19));
       });
 
+      const dropTarget = dropTargetRef.current && bees.get(dropTargetRef.current);
+      if (dragTaskRef.current && dropTarget) {
+        ctx.save();
+        ctx.strokeStyle = "#f2a93b"; ctx.lineWidth = 2;
+        ctx.shadowColor = "rgba(242,169,59,.8)"; ctx.shadowBlur = 13;
+        ctx.beginPath(); ctx.arc(dropTarget.x, dropTarget.y, 24, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        const label = `assign #${dragTaskRef.current} to ${dropTargetRef.current}`;
+        ctx.font = "11px ui-monospace, monospace";
+        const labelW = ctx.measureText(label).width + 14;
+        const lx = Math.max(5, Math.min(width - labelW - 5, dropTarget.x - labelW / 2));
+        const ly = Math.max(5, dropTarget.y - 43);
+        ctx.fillStyle = "#241c11"; ctx.beginPath(); ctx.roundRect(lx, ly, labelW, 21, 6); ctx.fill();
+        ctx.strokeStyle = "#f2a93b"; ctx.stroke();
+        ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(label, lx + 7, ly + 11);
+      } else if (dragTaskRef.current) {
+        ctx.fillStyle = "#f2a93b"; ctx.font = "11px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+        ctx.fillText(`drop task #${dragTaskRef.current} on a live bee`, width / 2, 18);
+      }
+
       const entrance = { x: hive.x, y: hive.y - 4 };
       const endpoint = (name) => name === "owner" ? entrance : (bees.get(name) || entrance);
       if (!still && pendingRef.current.length) {
@@ -687,16 +729,73 @@ function HiveView({ state }) {
     };
     const hit = (e) => {
       const p = at(e);
-      return [...beesRef.current].find(([, b]) => Math.hypot(p.x - b.x, p.y - b.y) < 16)?.[0] || null;
+      return [...beesRef.current].find(([, b]) => Math.hypot(p.x - b.x, p.y - b.y) < 24)?.[0] || null;
+    };
+    const taskId = (e) => {
+      const raw = e.dataTransfer?.getData("application/x-agent-msg-task") ||
+        e.dataTransfer?.getData("text/plain");
+      return /^\d+$/.test(raw || "") ? Number(raw) : null;
+    };
+    const clearDrop = () => {
+      dragTaskRef.current = null;
+      dropTargetRef.current = null;
+      canvas.style.cursor = "default";
+      if (reduced) draw(performance.now(), true);
     };
     const move = (e) => {
       hoverRef.current = hit(e); canvas.style.cursor = hoverRef.current ? "pointer" : "default";
       if (reduced) draw(performance.now(), true);
     };
-    const leave = () => { hoverRef.current = null; canvas.style.cursor = "default"; if (reduced) draw(performance.now(), true); };
+    const leave = () => {
+      hoverRef.current = null;
+      if (dragTaskRef.current) clearDrop();
+      else { canvas.style.cursor = "default"; if (reduced) draw(performance.now(), true); }
+    };
     const click = (e) => { const name = hit(e); if (name) location.hash = focusHash(name); };
+    const dragOver = (e) => {
+      const id = taskId(e);
+      if (id === null) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      dragTaskRef.current = id;
+      dropTargetRef.current = hit(e);
+      canvas.style.cursor = dropTargetRef.current ? "copy" : "not-allowed";
+      if (reduced) draw(performance.now(), true);
+    };
+    const dragLeave = (e) => {
+      if (e.target === canvas) clearDrop();
+    };
+    const drop = async (e) => {
+      const id = taskId(e);
+      const assignee = hit(e);
+      e.preventDefault();
+      clearDrop();
+      if (id === null || !assignee) return;
+      const task = (stateRef.current.tasks || []).find(t => t.id === id);
+      if (!task || task.status === "done") {
+        setDropStatus(`Task #${id} cannot be assigned by drag.`);
+        return;
+      }
+      if (task.assignee === assignee) {
+        setDropStatus(`#${id} is already assigned to ${assignee}.`);
+        return;
+      }
+      try {
+        const r = await fetch(`/tasks/${id}`, {
+          method: "PATCH", headers: JSONH, body: JSON.stringify({ assignee }),
+        });
+        if (!r.ok) throw new Error("assignment failed");
+        setDropStatus(`Assigned #${id} to ${assignee}.`);
+        refresh();
+      } catch {
+        setDropStatus(`Could not assign #${id}; task was not changed.`);
+      }
+    };
     canvas.addEventListener("mousemove", move); canvas.addEventListener("mouseleave", leave);
     canvas.addEventListener("click", click);
+    canvas.addEventListener("dragover", dragOver); canvas.addEventListener("dragleave", dragLeave);
+    canvas.addEventListener("drop", drop); canvas.addEventListener("dragend", clearDrop);
+    window.addEventListener("dragend", clearDrop);
     if (reduced) draw(performance.now(), true);
     else {
       const tick = (now) => {
@@ -709,6 +808,9 @@ function HiveView({ state }) {
       cancelAnimationFrame(frame); drawRef.current = null;
       canvas.removeEventListener("mousemove", move); canvas.removeEventListener("mouseleave", leave);
       canvas.removeEventListener("click", click);
+      canvas.removeEventListener("dragover", dragOver); canvas.removeEventListener("dragleave", dragLeave);
+      canvas.removeEventListener("drop", drop); canvas.removeEventListener("dragend", clearDrop);
+      window.removeEventListener("dragend", clearDrop);
     };
   }, []);
   useEffect(() => {
@@ -716,14 +818,15 @@ function HiveView({ state }) {
       drawRef.current(performance.now(), true);
   }, [state]);
 
-  return html`<div class="hive-panel"><canvas ref=${canvasRef}
-    aria-label="Live activity: running agents, tasks, and messages"></canvas></div>`;
+  return html`<div class="hive-panel"><canvas ref=${canvasRef} tabindex="0"
+    aria-label="Live activity. Drag a non-complete task card onto a live agent bee to assign it; use the task assignee select as a keyboard or touch alternative."></canvas>
+    <span class="sr-only" aria-live="polite">${dropStatus}</span></div>`;
 }
 
 function Overview({ state, refresh }) {
   return html`<div>
     <h2>activity</h2>
-    <${HiveView} state=${state} />
+    <${HiveView} state=${state} refresh=${refresh} />
     <${Kanban} state=${state} refresh=${refresh} />
   </div>`;
 }

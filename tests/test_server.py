@@ -314,6 +314,16 @@ def test_portal_page_served_at_root(client):
     assert "/api/state" in r.text
 
 
+def test_portal_task_drag_drop_contract(client):
+    portal = client.get("/").text
+    assert 'const draggable = t.status !== "done";' in portal
+    assert "draggable=${draggable}" in portal
+    assert 'Math.hypot(p.x - b.x, p.y - b.y) < 24' in portal
+    assert 'if (task.assignee === assignee)' in portal
+    assert 'window.addEventListener("dragend", clearDrop)' in portal
+    assert 'aria-live="polite"' in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]

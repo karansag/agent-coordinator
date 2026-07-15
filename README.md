@@ -131,8 +131,10 @@ The layout has two modes plus a persistent roster:
   drop out of assignment controls.
 - **Overview mode** (default): a live activity panel shows running
   agents as bees, their task tokens, and message travel above a kanban
-  board with columns open / picked up / done. Create and assign tasks
-  from the board; assignments are delivered into the agent's pane.
+  board with columns open / picked up / done. Drag an open or picked-up
+  task card onto a live bee to assign it, or use its assignee select as
+  a keyboard and touch alternative. Assignments are delivered into the
+  agent's pane.
 - **Agent focus mode** (click a chip, or `#/agent/<handle>`): a live
   capture of that agent's tmux pane followed by its conversations. The
   owner↔agent conversation has a full message composer: draft multi-line
