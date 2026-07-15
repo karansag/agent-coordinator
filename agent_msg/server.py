@@ -389,6 +389,7 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
             tmux.submit_key_for_flavor(req.flavor),
         )
         tmux.set_pane_title(pane, tmux.status_title(user_id, req.flavor))
+        tmux.rename_window(pane, user_id)
         return {"ok": True, "user_id": user_id, "tmux_pane": pane, "flavor": req.flavor}
 
     @app.post("/agents/{user_id}/stop")

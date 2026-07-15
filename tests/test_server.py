@@ -28,8 +28,15 @@ def client(tmp_path, monkeypatch):
         pane_titles.append((pane, title))
         return True, None
 
+    window_names = []
+
+    def fake_rename_window(pane, name):
+        window_names.append((pane, name))
+        return True, None
+
     monkeypatch.setattr(tmux, "deliver", fake_deliver)
     monkeypatch.setattr(tmux, "set_pane_title", fake_set_pane_title)
+    monkeypatch.setattr(tmux, "rename_window", fake_rename_window)
     monkeypatch.setattr(tmux, "list_panes", lambda: {"0:0.0", "0:1.0"})
     monkeypatch.setattr(
         tmux, "capture_pane", lambda pane: (f"screen of {pane}\n$ ", None)
@@ -55,6 +62,7 @@ def client(tmp_path, monkeypatch):
     c._pane_titles = pane_titles
     c._spawns = spawns
     c._kills = kills
+    c._window_names = window_names
     return c
 
 
@@ -452,6 +460,7 @@ def test_spawn_creates_window_and_registers_agent(client):
     assert client._pane_titles[-1] == (
         "agents:1.0", f"agent-msg: {body['user_id']} (claude)"
     )
+    assert client._window_names[-1] == ("agents:1.0", body["user_id"])
 
 
 def test_spawn_generic_launches_no_command(client):

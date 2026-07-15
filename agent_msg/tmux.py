@@ -107,6 +107,32 @@ def set_pane_title(pane: str, title: str) -> tuple[bool, str | None]:
     return True, None
 
 
+def rename_window(pane: str, name: str) -> tuple[bool, str | None]:
+    """Rename the tmux window containing `pane` so it shows the agent's id
+    in the window list. Also disables automatic renaming so the launched
+    command can't clobber it. Returns (ok, error_message_or_None)."""
+    try:
+        subprocess.run(
+            ["tmux", "set-window-option", "-t", pane, "automatic-rename", "off"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+        subprocess.run(
+            ["tmux", "rename-window", "-t", pane, name],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+    except subprocess.CalledProcessError as e:
+        return False, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return False, str(e)
+    return True, None
+
+
 def deliver(
     pane: str,
     text: str,
