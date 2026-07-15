@@ -85,6 +85,7 @@ class TaskUpdateReq(BaseModel):
 
     status: Literal["open", "picked_up", "done"] | None = None
     assignee: str | None = None
+    worktree: str | None = Field(default=None, min_length=1)
 
 
 class SpawnReq(BaseModel):
@@ -315,7 +316,9 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
 
     def _notify_assignment(task: dict):
         hint = (
-            f"When you start: agent-msg task-update {task['id']} --status picked_up. "
+            f"Before editing, use branch task/{task['id']} in a dedicated git worktree. "
+            f"Record it when you start: agent-msg task-update {task['id']} "
+            f"--worktree /absolute/path --status picked_up. "
             f"When finished: agent-msg task-update {task['id']} --status done."
         )
         content = f"You are assigned task #{task['id']}: {task['title']}."
@@ -357,6 +360,8 @@ def create_app(db_path: Path = DB_PATH) -> FastAPI:
         if "assignee" in req.model_fields_set:
             _require_registered_assignee(req.assignee)
             kwargs["assignee"] = req.assignee or None
+        if "worktree" in req.model_fields_set:
+            kwargs["worktree"] = req.worktree
         task = db.update_task(conn, task_id, **kwargs)
         if task["assignee"] and task["assignee"] != before["assignee"]:
             _notify_assignment(task)

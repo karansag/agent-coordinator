@@ -104,3 +104,28 @@ def test_cmd_register_uses_detected_current_pane(monkeypatch, capsys):
     assert client.cmd_register(args) == 0
     assert captured["json"] == {"tmux_pane": "session-a:9.0"}
     assert capsys.readouterr().out == '{"ok": true}\n'
+
+
+def test_cmd_task_update_records_worktree(monkeypatch, capsys):
+    captured = {}
+
+    def fake_patch(url, json, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        return SimpleNamespace(text='{"ok": true}', is_success=True)
+
+    monkeypatch.setattr(client.httpx, "patch", fake_patch)
+    args = Namespace(
+        id=7,
+        status="picked_up",
+        assignee=None,
+        worktree="/tmp/repo-task-7",
+    )
+
+    assert client.cmd_task_update(args) == 0
+    assert captured["url"].endswith("/tasks/7")
+    assert captured["json"] == {
+        "status": "picked_up",
+        "worktree": "/tmp/repo-task-7",
+    }
+    assert capsys.readouterr().out == '{"ok": true}\n'

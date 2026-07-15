@@ -429,7 +429,7 @@ function TaskCard({ t, agentIds, refresh }) {
   const act = async (p) => { await patchTask(t.id, p); refresh(); };
   return html`<div class="tcard">
     <div class="t">${t.title}</div>
-    <div class="meta">#${t.id} · created ${when}${t.description ? ` · ${t.description}` : ""}</div>
+    <div class="meta">#${t.id} · created ${when}${t.description ? ` · ${t.description}` : ""}${t.worktree ? ` · worktree ${t.worktree}` : ""}</div>
     <div class="foot">
       <select title="assignee" value=${t.assignee || ""}
         onChange=${e => act({ assignee: e.target.value })}>

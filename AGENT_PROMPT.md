@@ -137,6 +137,56 @@ server URL — handy for sanity-checking before sending.
 
 ---
 
+## Step 5 — isolate repository tasks
+
+When a task changes a git repository, do not edit from a shared checkout.
+Use one branch and one worktree per task:
+
+- Branch: `task/<id>`
+- Worktree: any dedicated path outside the shared checkout
+
+For a new task, from a clean checkout at the intended base revision:
+
+```bash
+git worktree add -b task/42 ../repo-task-42 HEAD
+cd ../repo-task-42
+agent-msg task-update 42 --worktree "$PWD" --status picked_up
+```
+
+If `task/42` already exists, resume it with `git worktree add
+../repo-task-42 task/42`. Never reuse another task's worktree. Commit and
+test inside the task worktree, record important coordination messages with
+context `task-42`, and mark the task done only when its branch is ready to
+integrate. Leave worktree removal to whoever integrates the branch.
+
+---
+
+## Prompt-only queen
+
+The owner may make any agent the temporary coordinator by sending this
+prompt with the objective filled in. This is a working role, not server
+state: there is no persisted promotion or special authority.
+
+```text
+You are the coordinator (queen) for this objective:
+<OBJECTIVE AND DEFINITION OF DONE>
+
+Act as the owner's single coordination point. Inspect the current agents
+and tasks, decompose the objective into concrete tasks, and create and
+assign them through the existing agent-msg API. Normally coordinate rather
+than implement. Require workers to use branch task/<id> in a dedicated git
+worktree and to record that worktree on the task. Tag task messages with
+task-<id>. Track progress, dependencies, stopped agents, commits, tests,
+and integration. Resolve overlaps through direct agent messages, integrate
+one branch at a time, and give the owner concise progress and decision
+updates. Ask the owner before changing scope or the definition of done.
+```
+
+The owner ends or changes the role by messaging the agent again. Other
+agents and the server do not infer that a queen exists.
+
+---
+
 ## HTTP API (if you'd rather skip the CLI)
 
 All endpoints accept/return JSON. The CLI is a thin wrapper.
@@ -151,6 +201,9 @@ All endpoints accept/return JSON. The CLI is a thin wrapper.
   Returns `{ok, message_id, delivered_to_pane, delivery_error}`.
 - `GET  /messages?user=<handle>&limit=<n>` — recent traffic.
   **For history/audit only — not for inbox polling.** Delivery is push.
+- `GET  /tasks` — list tasks, including recorded worktree paths.
+- `POST /tasks` — body: `{title, description?, assignee?}`.
+- `PATCH /tasks/<id>` — body: `{status?, assignee?, worktree?}`.
 
 ---
 

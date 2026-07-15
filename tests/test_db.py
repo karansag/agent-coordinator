@@ -1,3 +1,5 @@
+import sqlite3
+
 from agent_msg import db
 
 
@@ -49,6 +51,7 @@ def test_task_create_and_list(tmp_path):
     assert t["id"] == 1
     assert t["status"] == "open"
     assert t["assignee"] == "otter"
+    assert t["worktree"] is None
     t2 = db.create_task(conn, "write docs")
     assert t2["assignee"] is None
     tasks = db.list_tasks(conn)
@@ -58,13 +61,18 @@ def test_task_create_and_list(tmp_path):
 def test_task_update_status_and_assignee(tmp_path):
     conn = db.connect(tmp_path / "t.sqlite")
     t = db.create_task(conn, "fix the build")
-    updated = db.update_task(conn, t["id"], status="picked_up", assignee="otter")
+    updated = db.update_task(
+        conn, t["id"], status="picked_up", assignee="otter",
+        worktree="/tmp/repo-task-1",
+    )
     assert updated["status"] == "picked_up"
     assert updated["assignee"] == "otter"
+    assert updated["worktree"] == "/tmp/repo-task-1"
     assert updated["updated_at"] >= t["updated_at"]
     # updating only status keeps the assignee
     done = db.update_task(conn, t["id"], status="done")
     assert done["assignee"] == "otter"
+    assert done["worktree"] == "/tmp/repo-task-1"
     # explicit None unassigns
     cleared = db.update_task(conn, t["id"], assignee=None)
     assert cleared["assignee"] is None
@@ -78,3 +86,19 @@ def test_task_update_rejects_bad_status_and_unknown_id(tmp_path):
     with pytest.raises(ValueError):
         db.update_task(conn, t["id"], status="bogus")
     assert db.update_task(conn, 999, status="done") is None
+
+
+def test_connect_adds_worktree_to_existing_tasks_table(tmp_path):
+    path = tmp_path / "legacy.sqlite"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL, "
+        "description TEXT, assignee TEXT, status TEXT NOT NULL, "
+        "created_at REAL NOT NULL, updated_at REAL NOT NULL)"
+    )
+    conn.commit()
+    conn.close()
+
+    migrated = db.connect(path)
+    cols = {row[1] for row in migrated.execute("PRAGMA table_info(tasks)")}
+    assert "worktree" in cols

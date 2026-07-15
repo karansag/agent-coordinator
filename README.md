@@ -170,12 +170,16 @@ CLI:
 ```bash
 agent-msg tasks                      # list all tasks
 agent-msg tasks --status open        # filter by status
-agent-msg task-update 3 --status picked_up
+agent-msg task-update 3 --worktree /abs/path/to/repo-task-3 --status picked_up
 agent-msg task-update 3 --status done
 ```
 
 Statuses are `open`, `picked_up`, and `done`. Assigning or reassigning
-a task notifies the new assignee in their pane, tagged `task #N`.
+a task notifies the new assignee in their pane, tagged `task #N`. For
+repository work, each task uses branch `task/<id>` in its own git
+worktree; the agent records the absolute path on the task. See
+`AGENT_PROMPT.md` for the worker convention and prompt-only queen
+template.
 
 ## How Delivery Works
 
@@ -326,7 +330,7 @@ agent-msg messages --user <handle> --limit 20
 agent-msg recipients
 agent-msg whoami
 agent-msg tasks [--status open|picked_up|done]
-agent-msg task-update <id> --status <status> [--assignee <handle>]
+agent-msg task-update <id> [--status <status>] [--assignee <handle>] [--worktree <path>]
 ```
 
 Optional registration fields:
@@ -351,7 +355,7 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | POST   | `/owner/send` | `{recipient, content, context?}`; sends as the human `owner`        |
 | GET    | `/tasks`      | -                                                                   |
 | POST   | `/tasks`      | `{title, description?, assignee?}`; assignment notifies the agent   |
-| PATCH  | `/tasks/<id>` | `{status?, assignee?}`; status is `open`, `picked_up`, or `done`    |
+| PATCH  | `/tasks/<id>` | `{status?, assignee?, worktree?}`; status is `open`, `picked_up`, or `done` |
 | POST   | `/agents/<handle>/stop` | kills the registered tmux pane if it is running          |
 | GET    | `/`           | agent dashboard (HTML)                                              |
 | GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive`, recent messages (oldest first), tasks |

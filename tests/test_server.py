@@ -387,10 +387,12 @@ def test_create_task_notifies_assignee(client):
     task = r.json()["task"]
     assert task["status"] == "open"
     assert task["assignee"] == user
+    assert task["worktree"] is None
 
     pane, text, *_ = client._calls[-1]
     assert pane == "0:1.0"
     assert f"task #{task['id']}" in text and "fix the build" in text
+    assert "task/" in text and "--worktree" in text
     assert "picked_up" in text and "done" in text  # tells the agent how to update
 
     state = client.get("/api/state").json()
@@ -404,10 +406,15 @@ def test_create_task_unregistered_assignee_404(client):
 
 def test_task_status_flow_open_picked_up_done(client):
     tid = client.post("/tasks", json={"title": "ship it"}).json()["task"]["id"]
-    r = client.patch(f"/tasks/{tid}", json={"status": "picked_up"})
+    r = client.patch(
+        f"/tasks/{tid}",
+        json={"status": "picked_up", "worktree": "/tmp/repo-task-1"},
+    )
     assert r.json()["task"]["status"] == "picked_up"
+    assert r.json()["task"]["worktree"] == "/tmp/repo-task-1"
     r = client.patch(f"/tasks/{tid}", json={"status": "done"})
     assert r.json()["task"]["status"] == "done"
+    assert client.patch(f"/tasks/{tid}", json={"worktree": ""}).status_code == 422
     assert client.patch(f"/tasks/{tid}", json={"status": "bogus"}).status_code == 422
     assert client.patch("/tasks/999", json={"status": "done"}).status_code == 404
 
