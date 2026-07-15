@@ -176,11 +176,14 @@ To reach the dashboard from other devices on your tailnet, publish the
 server on a separate HTTPS port:
 
 ```bash
-tailscale serve --bg --https=8443 http://127.0.0.1:8765
+tailscale serve --bg --https=8445 http://127.0.0.1:8765
 ```
 
-Then open `https://<machine-name>.<tailnet>.ts.net:8443/` from any
-tailnet device. Remove it with `tailscale serve --https=8443 off`.
+Then open `https://<machine-name>.<tailnet>.ts.net:8445/` from any
+tailnet device. Remove it with `tailscale serve --https=8445 off`.
+
+Port 8443 is reserved on this host for the Diction-compatible transcription
+endpoint (`http://127.0.0.1:8091`); do not reuse it for the dashboard.
 
 ## Tasks
 
