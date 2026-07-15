@@ -129,3 +129,28 @@ def test_cmd_task_update_records_worktree(monkeypatch, capsys):
         "worktree": "/tmp/repo-task-7",
     }
     assert capsys.readouterr().out == '{"ok": true}\n'
+
+
+def test_cmd_task_create_files_task(monkeypatch, capsys):
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        return SimpleNamespace(text='{"ok": true, "task": {"id": 8}}', is_success=True)
+
+    monkeypatch.setattr(client.httpx, "post", fake_post)
+    args = Namespace(
+        title="Investigate flaky build",
+        description="CI failed twice",
+        assignee="stoat",
+    )
+
+    assert client.cmd_task_create(args) == 0
+    assert captured["url"].endswith("/tasks")
+    assert captured["json"] == {
+        "title": "Investigate flaky build",
+        "description": "CI failed twice",
+        "assignee": "stoat",
+    }
+    assert capsys.readouterr().out == '{"ok": true, "task": {"id": 8}}\n'

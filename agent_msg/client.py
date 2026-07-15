@@ -6,6 +6,7 @@
     agent-msg recipients
     agent-msg whoami       # prints detected tmux pane + registered handle
     agent-msg tasks [--status open|picked_up|done]
+    agent-msg task-create TITLE [--description TEXT] [--assignee HANDLE]
     agent-msg task-update ID --status open|picked_up|done [--assignee X] [--worktree PATH]
 
 Defaults:
@@ -118,6 +119,17 @@ def cmd_tasks(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_task_create(args: argparse.Namespace) -> int:
+    payload: dict = {"title": args.title}
+    if args.description:
+        payload["description"] = args.description
+    if args.assignee:
+        payload["assignee"] = args.assignee
+    r = httpx.post(f"{base_url()}/tasks", json=payload, timeout=5)
+    print(r.text)
+    return 0 if r.is_success else 1
+
+
 def cmd_task_update(args: argparse.Namespace) -> int:
     payload: dict = {}
     if args.status:
@@ -193,6 +205,14 @@ def main(argv: list[str] | None = None) -> int:
     tsk = sub.add_parser("tasks")
     tsk.add_argument("--status", choices=["open", "picked_up", "done"])
     tsk.set_defaults(func=cmd_tasks)
+
+    tcreate = sub.add_parser(
+        "task-create", help="file a task so it appears on the shared task board"
+    )
+    tcreate.add_argument("title")
+    tcreate.add_argument("--description")
+    tcreate.add_argument("--assignee")
+    tcreate.set_defaults(func=cmd_task_create)
 
     tup = sub.add_parser("task-update")
     tup.add_argument("id", type=int)

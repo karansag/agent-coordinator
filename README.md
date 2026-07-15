@@ -174,6 +174,8 @@ CLI:
 ```bash
 agent-msg tasks                      # list all tasks
 agent-msg tasks --status open        # filter by status
+agent-msg task-create "investigate flaky build" --description "CI failed twice"
+agent-msg task-create "review the fix" --assignee stoat
 agent-msg task-update 3 --worktree /abs/path/to/repo-task-3 --status picked_up
 agent-msg task-update 3 --status done
 ```
@@ -334,6 +336,7 @@ agent-msg messages --user <handle> --limit 20
 agent-msg recipients
 agent-msg whoami
 agent-msg tasks [--status open|picked_up|done]
+agent-msg task-create <title> [--description <text>] [--assignee <handle>]
 agent-msg task-update <id> [--status <status>] [--assignee <handle>] [--worktree <path>]
 ```
 

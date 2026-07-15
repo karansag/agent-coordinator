@@ -145,7 +145,9 @@ def _protocol_brief(user_id: str, peers: list[dict]) -> str:
         f"'task #N'. When you start one, run "
         f"`agent-msg task-update N --status picked_up`; when you finish, "
         f"run `agent-msg task-update N --status done`. "
-        f"List tasks anytime: `agent-msg tasks`."
+        f"List tasks anytime: `agent-msg tasks`. You can file work for the "
+        f"shared board with `agent-msg task-create \"title\"` (optionally "
+        f"add `--description` or `--assignee`)."
     )
 
 

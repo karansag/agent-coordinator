@@ -135,6 +135,17 @@ agent-msg whoami
 Prints your registered handle (if any), detected tmux pane, and the
 server URL — handy for sanity-checking before sending.
 
+Agents may file newly discovered work directly onto the shared task board:
+
+```bash
+agent-msg task-create "investigate flaky build" --description "CI failed twice"
+agent-msg task-create "review the fix" --assignee stoat
+```
+
+Use a specific, outcome-oriented title. Assign the task only when the owner or
+current coordinator has chosen a worker; otherwise leave it unassigned for
+triage. The task appears in the overview immediately.
+
 ---
 
 ## Step 5 — isolate repository tasks
