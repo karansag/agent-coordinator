@@ -126,9 +126,12 @@ The layout has two modes plus a persistent roster:
 - **Roster (right sidebar)**: one compact chip per running agent with
   avatar, flavor, tmux pane, liveness dot, and current task. A chip gets
   an unread badge when messages involving that agent arrive while you
-  are elsewhere. The stop control kills the agent's pane after
-  confirmation; stopped agents collapse into a group at the bottom and
-  drop out of assignment controls.
+  are elsewhere. The Queen control asks for a coordination objective,
+  delivers the coordinator prompt to that agent, and tells it to announce
+  its role to the other live agents. This remains a prompt-driven role,
+  not elevated server authority. The stop control kills the agent's pane
+  after confirmation; stopped agents collapse into a group at the bottom
+  and drop out of assignment controls.
 - **Overview mode** (default): a live activity panel shows running
   agents as bees, their task tokens, and message travel above a kanban
   board with columns open / picked up / done. Drag an open or picked-up

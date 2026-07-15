@@ -114,6 +114,13 @@
   }
   button.stop-agent:hover { color: var(--alert); border-color: var(--alert); }
   button.stop-agent:disabled { opacity: .5; cursor: wait; }
+  button.queen-agent {
+    border: 1px solid var(--honey-dim); border-radius: 5px;
+    background: rgba(242,169,59,.08); color: var(--honey); cursor: pointer;
+    font-family: var(--mono); font-size: 9px; line-height: 1; padding: 3px 6px;
+  }
+  button.queen-agent:hover { background: rgba(242,169,59,.18); color: var(--cream); }
+  button.queen-agent:disabled { opacity: .6; cursor: wait; }
   .chip-card .badge {
     position: absolute; top: -4px; right: -4px; width: 10px; height: 10px;
     border-radius: 50%; background: var(--honey); box-shadow: 0 0 8px rgba(242,169,59,.9);
@@ -358,6 +365,18 @@ async function patchTask(id, patch) {
   await fetch(`/tasks/${id}`, { method: "PATCH", headers: JSONH, body: JSON.stringify(patch) });
 }
 
+function queenPrompt(objective) {
+  return `The owner has promoted you to Queen, the coordinator for this objective:
+
+${objective}
+
+Act as the owner's coordination point until the owner ends or changes this role. Immediately run agent-msg recipients and notify every other live agent, using context queen-status, that you are the Queen for this objective and that task coordination should route through you.
+
+Inspect the current agents and shared task board, decompose the objective into concrete tasks, and create and assign them with agent-msg task-create and agent-msg task-update. Normally coordinate rather than implement. Require repository workers to use branch task/<id> in a dedicated worktree and record it on the task. Tag coordination messages task-<id>. Track progress, dependencies, stopped agents, commits, tests, and integration. Resolve overlap directly with agents and integrate one branch at a time. Keep the owner informed of material progress and decisions, and ask before changing scope or the definition of done.
+
+This is a prompt-driven role, not special server authority. The owner retains every right and can replace or demote you at any time.`;
+}
+
 function Avatar({ name, size }) {
   const base = name.replace(/-\d+$/, "");
   const emoji = ANIMAL_EMOJI[base];
@@ -370,6 +389,8 @@ function Avatar({ name, size }) {
 
 function RosterChip({ r, state, selected, unread, ping, refresh }) {
   const [stopping, setStopping] = useState(false);
+  const [promoting, setPromoting] = useState(false);
+  const [promoted, setPromoted] = useState(false);
   const task = currentTask(state.tasks, r.user_id);
   const flavor = (r.flavor || "generic").toLowerCase();
   const sub = task
@@ -392,6 +413,38 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       refresh();
     } else alert(`Could not stop ${r.user_id}.`);
   };
+  const promote = async (e) => {
+    e.stopPropagation();
+    const raw = prompt(
+      `What objective should ${r.user_id} coordinate as Queen?`,
+      "Coordinate the current task board and deliver the owner's objective.",
+    );
+    if (raw === null) return;
+    const objective = raw.trim();
+    if (!objective) {
+      alert("A Queen needs a coordination objective.");
+      return;
+    }
+    setPromoting(true);
+    try {
+      const res = await fetch("/owner/send", {
+        method: "POST", headers: JSONH,
+        body: JSON.stringify({
+          recipient: r.user_id,
+          context: "queen-promotion",
+          content: queenPrompt(objective),
+        }),
+      });
+      if (!res.ok) throw new Error("promotion delivery failed");
+      setPromoted(true);
+      setTimeout(() => setPromoted(false), 3000);
+      refresh();
+    } catch {
+      alert(`Could not promote ${r.user_id}; the prompt was not delivered.`);
+    } finally {
+      setPromoting(false);
+    }
+  };
   return html`<div class=${`chip-card ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
@@ -402,6 +455,9 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
     </div>
     <div class="controls">
       <span class="flav" title=${flavor}>${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic}</span>
+      ${r.pane_alive && html`<button type="button" class="queen-agent" disabled=${promoting}
+        title=${`promote ${r.user_id} to Queen`} aria-label=${`Promote ${r.user_id} to Queen`}
+        onClick=${promote}>${promoting ? "sending…" : promoted ? "queen ✓" : "♛ queen"}</button>`}
       ${r.pane_alive && html`<button type="button" class="stop-agent" disabled=${stopping}
         title=${`stop ${r.user_id}`} onClick=${stop}>${stopping ? "stopping…" : "stop"}</button>`}
     </div>

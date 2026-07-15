@@ -324,6 +324,17 @@ def test_portal_task_drag_drop_contract(client):
     assert 'aria-live="polite"' in portal
 
 
+def test_portal_queen_promotion_contract(client):
+    portal = client.get("/").text
+    assert "function queenPrompt(objective)" in portal
+    assert 'context: "queen-promotion"' in portal
+    assert 'fetch("/owner/send"' in portal
+    assert "agent-msg recipients" in portal
+    assert "queen-status" in portal
+    assert "agent-msg task-create" in portal
+    assert "Promote ${r.user_id} to Queen" in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]
