@@ -13,9 +13,12 @@ Codex, or otherwise). Last updated 2026-07-13.
 - **Tailnet auth.** The dashboard is served tailnet-wide via
   `tailscale serve --bg --https=8445 http://127.0.0.1:8765` at
   https://karans-linux.tail7b7d19.ts.net:8445/. Port 8443 is reserved for
-  the Diction transcription endpoint on local port 8091. The full API (send,
-  register, tasks, spawn) is exposed, not just read views. Add an auth
-  gate or read-only mode before sharing the tailnet.
+  Diction and routes to its persistent gateway on local port 8092; the gateway
+  forwards to the transcription normalizer on port 8091. Do not route 8443
+  directly to 8091 because the installed app uses the gateway's WebSocket
+  protocol. The full agent-msg API (send, register, tasks, spawn) is exposed,
+  not just read views. Add an auth gate or read-only mode before sharing the
+  tailnet.
 
 ## Conventions for this repo
 
