@@ -375,8 +375,16 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
     setStopping(true);
     const res = await fetch(`/agents/${encodeURIComponent(r.user_id)}/stop`, { method: "POST" });
     setStopping(false);
-    if (res.ok) refresh();
-    else alert(`Could not stop ${r.user_id}.`);
+    if (res.ok) {
+      // If we're viewing the agent we just stopped, leave its detail page
+      // (its terminal can no longer be captured) for another running agent,
+      // or the overview if none are left.
+      if (selected) {
+        const next = state.recipients.find(x => x.pane_alive && x.user_id !== r.user_id);
+        location.hash = next ? focusHash(next.user_id) : "#/";
+      }
+      refresh();
+    } else alert(`Could not stop ${r.user_id}.`);
   };
   return html`<div class=${`chip-card ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
