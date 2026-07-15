@@ -134,11 +134,15 @@ The layout has two modes plus a persistent roster:
   board with columns open / picked up / done. Create and assign tasks
   from the board; assignments are delivered into the agent's pane.
 - **Agent focus mode** (click a chip, or `#/agent/<handle>`): a live
-  capture of that agent's tmux pane with a prompt bar underneath.
-  Typing there and pressing Enter sends the message as `owner`, the
-  reserved handle for the human operator, straight into the agent's
-  pane. Below the terminal are the agent's conversations and its
-  tasks. Escape returns to the overview.
+  capture of that agent's tmux pane followed by its conversations. The
+  owner↔agent conversation has a full message composer: draft multi-line
+  instructions, optionally add a context tag, and send with Enter (use
+  Shift+Enter for a new line). Drafts are kept separately for each
+  composer and agent until delivery. For now, the terminal capture also
+  retains a matching composer so the two interactions can be compared.
+  Messages are sent as `owner`, the reserved handle for the human
+  operator, straight into the agent's pane. The agent's tasks follow
+  below; Escape returns to the overview.
 
 Agents reply to the human with `agent-msg send --to owner`; those
 messages appear only on the dashboard.

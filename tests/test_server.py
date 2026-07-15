@@ -352,6 +352,24 @@ def test_owner_send_delivers_to_pane_and_records(client):
     assert msgs[0]["sender"] == "owner"
 
 
+def test_owner_send_preserves_multiline_content_and_context(client):
+    user = client.post("/register", json={"tmux_pane": "0:1.0"}).json()["user_id"]
+    content = "First, inspect the failure.\nThen run the focused test."
+    r = client.post(
+        "/owner/send",
+        json={"recipient": user, "content": content, "context": "investigation"},
+    )
+    assert r.status_code == 200
+
+    _, delivered, *_ = client._calls[-1]
+    assert "[agent-msg from owner · investigation]" in delivered
+    assert content in delivered
+
+    msgs = client.get("/messages", params={"user": user}).json()["messages"]
+    assert msgs[0]["content"] == content
+    assert msgs[0]["context"] == "investigation"
+
+
 def test_owner_send_unknown_recipient_404(client):
     r = client.post("/owner/send", json={"recipient": "ghost", "content": "hi"})
     assert r.status_code == 404
