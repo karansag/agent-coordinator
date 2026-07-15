@@ -137,5 +137,6 @@ v1 matching this spec, then iterate with Karan.
 
 - `agent-msg status` self-report command (separate feature; would add
   a status line under bee names later).
-- Sound, drag interactions, task creation from the canvas.
+- Sound, task creation from the canvas. (Drag assignment shipped after v1:
+  comb cells and kanban cards can both be dragged onto a live bee.)
 - Any change to message/task semantics or the server.
