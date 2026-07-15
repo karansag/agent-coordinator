@@ -34,25 +34,34 @@ panes every 5s is negligible locally.
 - `unknown` — none of the rules matched (surfaced honestly, not hidden).
 - `stopped` — pane gone (already computed today via list_panes).
 
-## Classification rules (v1, ordered; first match wins)
+## Classification (v1): change detection first, patterns second
 
-Per-flavor regex packs in `agent_msg/activity.py`, table-driven so new
-harness versions mean editing data, not logic:
+Owner's insight, adopted as the primary mechanism: a working harness
+almost always changes its pane between polls (streaming text, spinners,
+token counts), so compare snapshots instead of understanding them.
 
-- claude: `esc to interrupt` or spinner lines → working;
-  `Do you want to` / `❯ 1. Yes` / `dangerously` → needs_attention
-  (permission); trailing `?` line in the last assistant block →
-  needs_attention (question); otherwise idle if the input box is empty.
-- codex: `Allow command` / `y/n` → needs_attention; spinner/`Working`
-  → working; else idle.
-- generic/hermes/pi: start with only needs_attention on `[y/N]`-style
-  prompts and `working` never (unknown otherwise); extend from real
-  observations, not guesses.
+Layer 1 — change detection (flavor-agnostic, no maintenance):
+- Each poll, hash the captured pane text (trailing whitespace
+  stripped). Keep {hash, last_changed} per agent.
+- Changed within the last 2 polls → `working`.
+- Unchanged longer than that → static; hand off to layer 2.
 
-Rules will misclassify sometimes. That is acceptable for a dashboard
-signal; `unknown` plus the live peek view keeps the human able to see
-the truth. Tests: fixture pane texts per flavor asserting the
-classification, so harness UI changes become one-line fixture updates.
+Layer 2 — attention fingerprints, applied ONLY to static panes:
+- A small per-flavor regex set that answers one question: does the
+  static screen show a dialog waiting on a human? (claude:
+  `Do you want to` / `❯ 1. Yes`; codex: `Allow command` / `y/n`;
+  generic: `[y/N]`-style prompts.) Match → `needs_attention` with the
+  matched line as detail; no match → `idle`.
+
+Because layer 1 owns "working", the regex surface shrinks to a handful
+of dialog fingerprints instead of full per-harness classification.
+
+Known misread, accepted for v1: a long-running command that produces
+no output for a while looks static and reads as idle. The grace period
+in phase 2 keeps that from paging the owner; if it proves annoying,
+the fix is a per-agent `working_hold` hint, not more regex. Tests:
+snapshot-pair fixtures for layer 1, static-screen fixtures per flavor
+for layer 2.
 
 ## Dashboard surface
 
