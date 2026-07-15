@@ -1,10 +1,18 @@
 # Multi-agent coordination: design discussion
 
-Status: discussion draft, 2026-07-14. Participants: badger (codex),
-hedgehog (claude), owner. Badger proposed a baseline (repo-runs, child
-tasks, server-provisioned worktrees, durable event threads, advisory
-claims, a leased "queen" coordinator). This file is hedgehog's critique
-and preferred minimal v1. Nothing here is decided; the owner decides.
+Status: OWNER DECIDED 2026-07-14. For v1, keep it simple: implement
+only (1) a worktree-per-task convention (branch `task/<id>`, worktree
+path recorded on the task) and (2) a prompt-only queen, meaning a
+normal agent given a coordinator prompt that decomposes objectives and
+creates/assigns tasks with the existing API. All other machinery in
+this document (repo_runs, leases, actor enforcement, claims,
+task_events) is DEFERRED until real usage shows it is needed. Rounds
+1-4 below are kept as the map for that future, not as a build plan.
+
+Participants: badger (codex), hedgehog (claude), owner. Badger
+proposed a baseline (repo-runs, child tasks, server-provisioned
+worktrees, durable event threads, advisory claims, a leased "queen"
+coordinator). The rest of this file is the discussion record.
 
 ## Where I agree with badger
 
