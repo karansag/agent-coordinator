@@ -349,6 +349,9 @@ def test_portal_queen_promotion_contract(client):
 def test_portal_dead_pane_overrides_stale_activity(client):
     portal = client.get("/").text
     assert 'if (!r.pane_alive) return "stopped";' in portal
+    assert "chip-card state-${st.cls}" in portal
+    assert ".chip-card.state-working" in portal
+    assert ".chip-card.state-attention" in portal
 
 
 def test_state_reports_agents_liveness_and_ordered_messages(client):

@@ -107,12 +107,19 @@
   .chip-card {
     position: relative; display: flex; align-items: center; gap: 10px;
     border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
-    margin-bottom: 8px; background: var(--ink-2); cursor: pointer;
-    transition: border-color .15s ease, background .15s ease;
+    margin-bottom: 8px; background:
+      linear-gradient(var(--state-wash, transparent), var(--state-wash, transparent)), var(--ink-2);
+    border-color: var(--state-edge, var(--line)); cursor: pointer;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease;
     animation: rise .35s ease backwards;
   }
   .chip-card:hover { border-color: var(--honey-dim); }
-  .chip-card.sel { border-color: var(--honey-dim); background: var(--panel); }
+  .chip-card.sel { border-color: var(--honey-dim); box-shadow: inset 3px 0 0 var(--honey-dim); }
+  .chip-card.state-working { --state-wash: rgba(143,191,111,.10); --state-edge: rgba(143,191,111,.52); }
+  .chip-card.state-attention { --state-wash: rgba(242,169,59,.14); --state-edge: rgba(242,169,59,.72); }
+  .chip-card.state-idle { --state-wash: rgba(168,152,120,.07); --state-edge: rgba(168,152,120,.38); }
+  .chip-card.state-unknown { --state-wash: rgba(168,152,120,.035); --state-edge: rgba(168,152,120,.23); }
+  .chip-card.state-stopped { --state-wash: rgba(224,108,85,.08); --state-edge: rgba(224,108,85,.35); }
   .chip-card .who { min-width: 0; flex: 1; }
   .chip-card .nm { font-family: var(--serif); font-style: italic; font-size: 16px; line-height: 1.2; }
   .chip-card .sub { font-size: 10px; color: var(--cream-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -483,7 +490,7 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       setPromoting(false);
     }
   };
-  return html`<div class=${`chip-card ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
+  return html`<div class=${`chip-card state-${st.cls} ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
     <div class="who">
