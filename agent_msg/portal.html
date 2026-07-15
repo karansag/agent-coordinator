@@ -599,6 +599,11 @@ function HiveView({ state, refresh }) {
   const pendingRef = useRef([]);
   const lastSeenRef = useRef(null);
   const hoverRef = useRef(null);
+  const taskHoverRef = useRef(null);
+  const taskCellsRef = useRef([]);
+  const taskStatusesRef = useRef(null);
+  const pendingShipmentsRef = useRef([]);
+  const shipmentsRef = useRef([]);
   const dragTaskRef = useRef(null);
   const dropTargetRef = useRef(null);
   const drawRef = useRef(null);
@@ -611,6 +616,16 @@ function HiveView({ state, refresh }) {
   else if (maxId > lastSeenRef.current) {
     pendingRef.current.push(...messages.filter(m => m.id > lastSeenRef.current).slice(-8));
     lastSeenRef.current = maxId;
+  }
+  const taskSnapshot = new Map((state.tasks || []).map(t => [t.id, t]));
+  if (taskStatusesRef.current === null) taskStatusesRef.current = taskSnapshot;
+  else {
+    for (const task of state.tasks || []) {
+      const before = taskStatusesRef.current.get(task.id);
+      if (before && before.status !== "done" && task.status === "done")
+        pendingShipmentsRef.current.push(task);
+    }
+    taskStatusesRef.current = taskSnapshot;
   }
 
   useEffect(() => {
@@ -662,39 +677,62 @@ function HiveView({ state, refresh }) {
       for (const name of bees.keys()) if (!live.has(name)) bees.delete(name);
       ctx.clearRect(0, 0, width, 260);
 
-      const hive = { x: width / 2, y: 233 };
-      ctx.strokeStyle = "#3a2d1a"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(18, 48); ctx.lineTo(Math.min(190, width * .3), 48); ctx.stroke();
-      ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
-      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("open", 18, 25);
-      const open = (data.tasks || []).filter(t => t.status === "open" && !t.assignee);
-      open.forEach((t, i) => token(t, 28 + (i % 6) * 25, 38 + Math.floor(i / 6) * 21));
-
+      const center = { x: width / 2, y: 118 };
+      const ownerNode = { x: width / 2, y: 235 };
       const done = (data.tasks || []).filter(t => t.status === "done").length;
       const doneX = width - 28;
-      hex(doneX, 30, 14, "rgba(143,191,111,.15)", "#8fbf6f");
+      hex(doneX - 7, 34, 11, "rgba(143,191,111,.07)", "#567546");
+      hex(doneX, 28, 14, "rgba(143,191,111,.15)", "#8fbf6f");
       ctx.fillStyle = "#8fbf6f"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
-      ctx.fillText(`done · ${done}`, doneX - 21, 30);
+      ctx.fillText(`shipped · ${done}`, doneX - 24, 28);
 
-      [[64, 219], [52, 205], [38, 191]].forEach(([w, y]) => {
-        ctx.fillStyle = "#2c2214"; ctx.strokeStyle = "#b97f27";
-        ctx.beginPath(); ctx.roundRect(hive.x - w/2, y, w, 14, 7); ctx.fill(); ctx.stroke();
+      const waiting = (data.tasks || []).filter(t =>
+        t.status !== "done" && (!t.assignee || !live.has(t.assignee)));
+      const carriedCount = (data.tasks || []).filter(t =>
+        t.status !== "done" && t.assignee && live.has(t.assignee)).length;
+      const visible = waiting.slice(0, 15);
+      const cols = Math.min(5, Math.max(1, Math.ceil(Math.sqrt(visible.length || 1))));
+      const rows = Math.ceil(visible.length / cols);
+      const cellX = 38, cellY = 34;
+      taskCellsRef.current = [];
+      ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(`task comb · ${waiting.length} waiting · ${carriedCount} carried`, center.x, 17);
+      visible.forEach((task, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const x = center.x + (col - (cols - 1) / 2) * cellX;
+        const y = center.y - ((rows - 1) * cellY) / 2 + row * cellY + (col % 2 ? cellY / 2 : 0);
+        const stranded = task.assignee && !live.has(task.assignee);
+        hex(x, y, 18, stranded ? "rgba(224,108,85,.10)" : "rgba(242,169,59,.12)",
+          stranded ? "#e06c55" : "#b97f27");
+        ctx.fillStyle = stranded ? "#e06c55" : "#f2a93b";
+        ctx.font = "9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(`#${task.id}`, x, y + .5);
+        taskCellsRef.current.push({ x, y, task, stranded });
       });
-      ctx.fillStyle = "#16120c"; ctx.beginPath();
-      ctx.arc(hive.x, hive.y, 7, Math.PI, 0); ctx.lineTo(hive.x + 7, hive.y + 5);
-      ctx.lineTo(hive.x - 7, hive.y + 5); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#f2a93b"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-      ctx.fillText("owner", hive.x, 253);
+      if (waiting.length > visible.length) {
+        ctx.fillStyle = "#a89878"; ctx.font = "9px ui-monospace, monospace";
+        ctx.fillText(`+${waiting.length - visible.length} more`, center.x, 202);
+      }
+
+      hex(ownerNode.x, ownerNode.y, 8, "rgba(242,169,59,.09)", "#b97f27");
+      ctx.fillStyle = "#f2a93b"; ctx.font = "9px ui-monospace, monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      ctx.fillText("owner", ownerNode.x, 253);
 
       running.forEach((r, i) => {
         const name = r.user_id;
         const seed = hue(name);
-        const homeX = width * .15 + (i / ((running.length - 1) || 1)) * width * .7;
-        const homeY = 100 + seed % 70;
-        const picked = (data.tasks || []).filter(t => t.assignee === name && t.status === "picked_up")
-          .sort((a, b) => b.updated_at - a.updated_at)[0];
-        const assigned = !picked && (data.tasks || []).filter(t => t.assignee === name && t.status === "open")
-          .sort((a, b) => b.updated_at - a.updated_at)[0];
+        const angle = Math.PI + (i / Math.max(1, running.length)) * Math.PI * 2;
+        const homeX = center.x + Math.cos(angle) * Math.min(width * .36, 330);
+        const homeY = 132 + Math.sin(angle) * 67;
+        const mine = (data.tasks || []).filter(t => t.assignee === name && t.status !== "done")
+          .sort((a, b) => (a.status === "picked_up" ? -1 : 1) - (b.status === "picked_up" ? -1 : 1)
+            || b.updated_at - a.updated_at);
+        const picked = mine.find(t => t.status === "picked_up");
+        const assigned = !picked && mine.find(t => t.status === "open");
+        const primary = picked || assigned;
+        const extras = mine.filter(t => !primary || t.id !== primary.id);
         const phase = seed / 57;
         const speed = picked ? 2.5 : 1;
         const amp = picked ? 26 : 18;
@@ -703,7 +741,7 @@ function HiveView({ state, refresh }) {
         const y = homeY + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
         const dx = still ? 1 : Math.cos(q);
         const dy = still ? 0 : Math.cos(q * 1.7 + phase) * .94;
-        bees.set(name, { x, y, task: picked || assigned });
+        bees.set(name, { x, y, task: primary });
         if (assigned) token(assigned, x + 22, y + Math.sin(q * .8) * 3);
 
         ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx));
@@ -718,6 +756,15 @@ function HiveView({ state, refresh }) {
         ctx.fillStyle = "#16120c"; ctx.beginPath(); ctx.arc(11, 0, 3.5, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         if (picked) token(picked, x, y + 16);
+        extras.slice(0, 4).forEach((task, j) => {
+          const a = -1.15 + j * .75;
+          token(task, x + Math.cos(a) * 25, y + Math.sin(a) * 22);
+        });
+        if (extras.length > 4) {
+          ctx.fillStyle = "#a89878"; ctx.font = "8px ui-monospace, monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(`+${extras.length - 4}`, x + 29, y + 12);
+        }
         ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
         ctx.fillText(name, x, y + (picked ? 35 : 19));
@@ -745,8 +792,7 @@ function HiveView({ state, refresh }) {
         ctx.fillText(`drop task #${dragTaskRef.current} on a live bee`, width / 2, 18);
       }
 
-      const entrance = { x: hive.x, y: hive.y - 4 };
-      const endpoint = (name) => name === "owner" ? entrance : (bees.get(name) || entrance);
+      const endpoint = (name) => name === "owner" ? ownerNode : (bees.get(name) || ownerNode);
       if (!still && pendingRef.current.length) {
         const born = now;
         streaksRef.current.push(...pendingRef.current.splice(0, 8).map(m => ({
@@ -764,6 +810,23 @@ function HiveView({ state, refresh }) {
         }
       }
 
+      if (!still && pendingShipmentsRef.current.length) {
+        const born = now;
+        shipmentsRef.current.push(...pendingShipmentsRef.current.splice(0).map(task => ({
+          born, task, a: { ...(bees.get(task.assignee) || ownerNode) },
+          b: { x: doneX, y: 28 },
+        })));
+      } else if (still) pendingShipmentsRef.current.length = 0;
+      shipmentsRef.current = shipmentsRef.current.filter(s => now - s.born < 1100);
+      if (!still) for (const shipment of shipmentsRef.current) {
+        const u = Math.min(1, (now - shipment.born) / 1100);
+        const c = { x: (shipment.a.x + shipment.b.x) / 2,
+          y: Math.min(shipment.a.y, shipment.b.y) - 45 };
+        const p = point(shipment.a, shipment.b, c, u);
+        ctx.save(); ctx.globalAlpha = Math.min(1, (1 - u) * 2.4);
+        token(shipment.task, p.x, p.y); ctx.restore();
+      }
+
       const hovered = hoverRef.current && bees.get(hoverRef.current);
       if (hovered) {
         const title = hovered.task ? ` · ${hovered.task.title}` : "";
@@ -777,6 +840,20 @@ function HiveView({ state, refresh }) {
         ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
         ctx.fillText(label, tx + 6, ty + 10);
       }
+      const taskCell = taskHoverRef.current;
+      if (!hovered && taskCell) {
+        const task = taskCell.task;
+        const stateLabel = taskCell.stranded ? `assigned to stopped ${task.assignee}` : "waiting for a bee";
+        const label = `#${task.id} · ${task.title} · ${stateLabel}`;
+        ctx.font = "10px ui-monospace, monospace";
+        const w = Math.min(width - 16, ctx.measureText(label).width + 12);
+        const tx = Math.max(8, Math.min(width - w - 8, taskCell.x - w / 2));
+        const ty = Math.min(232, taskCell.y + 25);
+        ctx.fillStyle = "#241c11"; ctx.beginPath(); ctx.roundRect(tx, ty, w, 19, 5); ctx.fill();
+        ctx.strokeStyle = taskCell.stranded ? "#e06c55" : "#b97f27"; ctx.stroke();
+        ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(label, tx + 6, ty + 10, w - 12);
+      }
     };
     drawRef.current = draw;
     const at = (e) => {
@@ -786,6 +863,10 @@ function HiveView({ state, refresh }) {
     const hit = (e) => {
       const p = at(e);
       return [...beesRef.current].find(([, b]) => Math.hypot(p.x - b.x, p.y - b.y) < 24)?.[0] || null;
+    };
+    const hitTask = (e) => {
+      const p = at(e);
+      return taskCellsRef.current.find(cell => Math.hypot(p.x - cell.x, p.y - cell.y) < 20) || null;
     };
     const taskId = (e) => {
       const raw = e.dataTransfer?.getData("application/x-agent-msg-task") ||
@@ -799,11 +880,12 @@ function HiveView({ state, refresh }) {
       if (reduced) draw(performance.now(), true);
     };
     const move = (e) => {
-      hoverRef.current = hit(e); canvas.style.cursor = hoverRef.current ? "pointer" : "default";
+      hoverRef.current = hit(e); taskHoverRef.current = hoverRef.current ? null : hitTask(e);
+      canvas.style.cursor = hoverRef.current ? "pointer" : "default";
       if (reduced) draw(performance.now(), true);
     };
     const leave = () => {
-      hoverRef.current = null;
+      hoverRef.current = null; taskHoverRef.current = null;
       if (dragTaskRef.current) clearDrop();
       else { canvas.style.cursor = "default"; if (reduced) draw(performance.now(), true); }
     };

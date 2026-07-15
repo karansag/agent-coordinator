@@ -1,5 +1,9 @@
 # Spec: the hive panel (live agent visualization)
 
+> Updated after the owner-directed task-comb redesign: the oversized owner
+> skep was replaced by a compact owner node, and active work now occupies the
+> center of the scene as a honeycomb.
+
 A whimsical but truthful canvas visualization of agents working, shown
 at the top of the dashboard's overview mode, above the kanban board.
 This documents the agreed design so any agent (Claude, Codex, human)
@@ -22,15 +26,12 @@ v1 matching this spec, then iterate with Karan.
 
 ```
 +----------------------------------------------------------------+
-| open shelf (top-left)                    done cell (top-right)  |
-|  [#4] [#7]  hex tokens, unassigned        honeycomb cell with   |
-|             open tasks                    "done · N" count      |
+|             task comb · N waiting · M carried     shipped · N  |
+|                     [#4][#7]...                     ◇◇          |
 |                                                                  |
-|          ~~~ bees fly in this middle band (y 70..190) ~~~        |
-|         bee = agent, name label under it, avatar-colored         |
+|       ~~~ live bees orbit the task comb and carry work ~~~       |
 |                                                                  |
-|                      owner hive (bottom-center)                  |
-|                   skep shape, label "owner"                      |
+|                       ◇ owner (compact)                          |
 +----------------------------------------------------------------+
 ```
 
@@ -46,16 +47,17 @@ v1 matching this spec, then iterate with Karan.
   (ellipses, `rgba(240,230,210,.5)`, flutter with `sin(t*30)`), tiny
   head dot. Name label centered 16px below the body: 10px mono,
   `--cream-dim` (#a89878).
-- Task token: flat-top hexagon, 16px wide, fill `rgba(242,169,59,.15)`,
-  stroke `--honey-dim` (#b97f27), task id (`#3`) centered in 8px mono
-  `--honey` (#f2a93b).
-- Owner hive: classic skep at bottom-center: 3 stacked rounded
-  rectangles narrowing upward (widths 64/52/38, heights 14 each),
-  fill `--panel-2` (#2c2214), stroke `--honey-dim`, dark arched
-  entrance at the base, label "owner" beneath in 10px mono
-  `--honey`.
-- Done cell: one hexagon (28px) at top-right filled `rgba(143,191,111,.15)`
-  stroke moss (#8fbf6f), with `done · N` in 10px mono moss to its left.
+- Task cell: an 18px-radius hexagon in the central comb, filled with
+  translucent honey and labeled `#N`. A task assigned to a stopped agent stays
+  in the comb with an alert-colored outline instead of silently disappearing.
+  Hover reveals its title and state. The smaller carried token remains the
+  existing 8px-radius hexagon so it does not obscure its bee.
+- Owner node: one compact 8px-radius honey hexagon at bottom-center, labeled
+  `owner`. It remains the endpoint for owner message streaks without consuming
+  the scene's informative area.
+- Shipped pile: two overlapping moss cells at top-right with a `shipped · N`
+  count. A task that newly becomes done flies from its last bee toward this
+  pile over about 1.1 seconds, then leaves the active scene.
 - Message streak: particle traveling sender → recipient over ~900ms
   along a quadratic bezier whose control point is lifted 40px above
   the midpoint. Head: 2.5px circle `--honey`; tail: fading 10-step
@@ -67,9 +69,8 @@ v1 matching this spec, then iterate with Karan.
 - One bee per RUNNING agent (`pane_alive`), keyed by `user_id`.
   Stopped agents are absent. Bees appear/disappear as the roster
   changes; no ghost bees.
-- Home positions: spread across the middle band by roster order:
-  `x = width*0.15 + i/(n-1||1) * width*0.7`, `y = 100 + (hue(name) % 70)`.
-  Recompute on resize; canvas width tracks its container each frame,
+- Home positions: distribute live bees around an ellipse centered on the task
+  comb. Recompute on resize; canvas width tracks its container each frame,
   with devicePixelRatio scaling.
 - Idle bee (no picked_up task): lazy Lissajous wander around home,
   amplitude ~18px, slow (full loop ~8s), phase seeded from `hue(name)`
@@ -77,11 +78,12 @@ v1 matching this spec, then iterate with Karan.
 - Busy bee (has a `picked_up` task, via the existing `currentTask()`
   helper): tighter and faster loops (amplitude ~26px, ~2.5x speed) and
   it carries its task token 14px below the body.
-- Open tasks: unassigned → tokens rest in a row on the open shelf
-  (wrap after 6). Assigned but still `open` → token bobs gently ~22px
-  beside its bee (the bee has been handed it but hasn't picked up).
-- Done: not per-token; the done cell just shows the live count of
-  `status === "done"` tasks.
+- Active tasks without a live assignee occupy the central comb (up to 15 cells,
+  with an overflow count). Assigned but still `open` → token bobs gently ~22px
+  beside its bee; `picked_up` → the bee carries it below its body.
+- Done tasks leave the comb/bee and increment the shipped pile. Transitions
+  observed after initial load animate a token to the pile; existing completed
+  history does not burst on page load.
 - Messages: on each poll, messages with id greater than the last seen
   id spawn one streak each (cap at 8 per poll). Maintain the last-seen
   id in a ref local to HiveView; initialize it to the current max on
@@ -105,9 +107,9 @@ v1 matching this spec, then iterate with Karan.
   streaks; tokens and bees at their home positions).
 - Bee/particle state lives in plain refs (Maps keyed by user_id), not
   React state; only React-render the wrapping div + canvas element.
-- Message streak endpoints: look up live bee positions from the bee
-  registry at spawn time; if an endpoint is the owner or an agent that
-  has no bee (stopped), use the hive entrance point.
+- Message streak endpoints: look up live bee positions from the bee registry at
+  spawn time; if an endpoint is the owner or an agent that has no bee
+  (stopped), use the compact owner node.
 - Keep everything inside ~250 lines. No external assets; everything is
   drawn with canvas 2D paths.
 

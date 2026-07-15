@@ -324,6 +324,16 @@ def test_portal_task_drag_drop_contract(client):
     assert 'aria-live="polite"' in portal
 
 
+def test_portal_task_honeycomb_contract(client):
+    portal = client.get("/").text
+    assert "task comb · ${waiting.length} waiting · ${carriedCount} carried" in portal
+    assert "taskCellsRef.current.push" in portal
+    assert "extras.slice(0, 4).forEach" in portal
+    assert "shipmentsRef.current.push" in portal
+    assert "shipped · ${done}" in portal
+    assert 'ctx.fillText("owner", ownerNode.x, 253)' in portal
+
+
 def test_portal_queen_promotion_contract(client):
     portal = client.get("/").text
     assert "function queenPrompt(objective)" in portal
