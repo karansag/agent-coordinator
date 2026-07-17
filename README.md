@@ -124,21 +124,30 @@ seconds.
 The layout has two modes plus a persistent roster:
 
 - **Roster (right sidebar)**: one compact chip per running agent with
-  avatar, flavor, tmux pane, activity dot, and current task. A chip gets
-  an unread badge when messages involving that agent arrive while you
-  are elsewhere. The Queen control asks for a coordination objective,
-  delivers the coordinator prompt to that agent, and tells it to announce
-  its role to the other live agents. This remains a prompt-driven role,
-  not elevated server authority. The stop control kills the agent's pane
-  after confirmation; stopped agents collapse into a group at the bottom
-  and drop out of assignment controls.
+  avatar, flavor, tmux pane, activity dot, and current task. Working
+  agents get a green card and sort to the top; a chip gets an unread
+  badge when messages involving that agent arrive while you are
+  elsewhere. Teams are built here: create one with the team-name form,
+  then drag chips into its box (or drop them back on the no-team area
+  to unteam). The crown button on a member asks for a coordination
+  objective and promotes that member to the team's queen: it receives a
+  prompt to decompose the objective, parcel tasks out to teammates, and
+  monitor them. This remains a prompt-driven role, not elevated server
+  authority. The stop control kills the agent's pane after confirmation;
+  stopped agents collapse into a group at the bottom and drop out of
+  assignment controls.
 - **Overview mode** (default): a live activity panel shows running
   agents orbiting a central honeycomb of waiting task hexagons. Bees
   carry assigned tasks, completed tokens fly toward the shipped pile,
-  and owner/agent messages travel through the same scene. The kanban
-  below remains the precise management surface. Drag an open or picked-up
-  task card onto a live bee to assign it, or use its assignee select as
-  a keyboard and touch alternative.
+  and owner/agent messages travel through the same scene. Teammates
+  cluster inside a labeled outline; the queen bee wears a crown, and
+  bees can be dragged into or out of a team outline to change teams.
+  Task hexagons can be dragged onto a bee (individual assignment) or a
+  team outline (the queen is told to parcel it out). Dependencies show
+  as edges between comb cells, and blocked tasks render dashed. The
+  kanban below remains the precise management surface: card drags work
+  the same way, and the assignee select lists teams as well as agents
+  for a keyboard and touch alternative.
 - **Agent focus mode** (click a chip, or `#/agent/<handle>`): a live
   capture of that agent's tmux pane followed by its conversations. The
   owner↔agent conversation has a full message composer: draft multi-line
@@ -199,6 +208,7 @@ agent-msg tasks                      # list all tasks
 agent-msg tasks --status open        # filter by status
 agent-msg task-create "investigate flaky build" --description "CI failed twice"
 agent-msg task-create "review the fix" --assignee stoat
+agent-msg task-create "ship it" --depends-on 3,5   # dependency graph, shown on the board
 agent-msg task-update 3 --worktree /abs/path/to/repo-task-3 --status picked_up
 agent-msg task-update 3 --status done
 ```
@@ -207,8 +217,8 @@ Statuses are `open`, `picked_up`, and `done`. Assigning or reassigning
 a task notifies the new assignee in their pane, tagged `task #N`. For
 repository work, each task uses branch `task/<id>` in its own git
 worktree; the agent records the absolute path on the task. See
-`AGENT_PROMPT.md` for the worker convention and prompt-only queen
-template.
+`AGENT_PROMPT.md` for the worker convention and how teams and
+queens coordinate.
 
 ## How Delivery Works
 
@@ -389,11 +399,16 @@ When `--pane` is omitted, the CLI resolves the current pane with
 | GET    | `/messages`   | `?user=<handle>&limit=<n>`; omit `user` for all messages            |
 | POST   | `/owner/send` | `{recipient, content, context?}`; sends as the human `owner`        |
 | GET    | `/tasks`      | -                                                                   |
-| POST   | `/tasks`      | `{title, description?, assignee?}`; assignment notifies the agent   |
-| PATCH  | `/tasks/<id>` | `{status?, assignee?, worktree?}`; status is `open`, `picked_up`, or `done` |
+| POST   | `/tasks`      | `{title, description?, assignee?, team_id?, depends_on?}`; assignment notifies the agent or team |
+| PATCH  | `/tasks/<id>` | `{status?, assignee?, worktree?, team_id?, depends_on?}`; status is `open`, `picked_up`, or `done` |
+| GET    | `/teams`      | -                                                                   |
+| POST   | `/teams`      | `{name}`                                                            |
+| PATCH  | `/teams/<id>` | `{name?, queen?, objective?}`; crowning a queen delivers its coordination prompt |
+| DELETE | `/teams/<id>` | disband; members and tasks fall back to no team                     |
+| POST   | `/agents/<handle>/team` | `{team_id}`; null to leave the current team               |
 | POST   | `/agents/<handle>/stop` | kills the registered tmux pane if it is running          |
 | GET    | `/`           | agent dashboard (HTML)                                              |
-| GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive`, recent messages (oldest first), tasks |
+| GET    | `/api/state`  | `?limit=<n>`; recipients with `pane_alive`, recent messages (oldest first), tasks, teams |
 | GET    | `/api/peek/<handle>` | live text capture of the agent's tmux pane                   |
 
 `/register` returns the assigned `user_id` and a `protocol_brief` string

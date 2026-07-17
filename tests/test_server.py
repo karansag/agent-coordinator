@@ -334,16 +334,19 @@ def test_portal_task_honeycomb_contract(client):
     assert 'ctx.fillText("owner", ownerNode.x, 253)' in portal
 
 
-def test_portal_queen_promotion_contract(client):
+def test_portal_team_contract(client):
     portal = client.get("/").text
-    assert "function queenPrompt(objective)" in portal
-    assert 'context: "queen-promotion"' in portal
-    assert 'fetch("/owner/send"' in portal
-    assert "agent-msg recipients" in portal
-    assert "queen-status" in portal
-    assert "agent-msg task-create" in portal
-    assert "Promote ${r.user_id} to Queen" in portal
-    assert 'promoted ? "sent ✓" : "promote"' in portal
+    # Teams are managed from the sidebar (create, drag membership, crown a
+    # queen) and mirrored in the hive canvas as labeled outlines.
+    assert "function TeamBox" in portal
+    assert "function NewTeam" in portal
+    assert "application/x-agent-msg-agent" in portal
+    assert "/team`" in portal
+    assert "queen: r.user_id, objective: raw.trim()" in portal
+    assert "teamBoxesRef" in portal
+    assert "assign #${dragTaskRef.current} to team ${targetBox.name}" in portal
+    assert "move ${dragBeeRef.current} to team ${targetBox.name}" in portal
+    assert "depends_on" in portal
 
 
 def test_portal_dead_pane_overrides_stale_activity(client):

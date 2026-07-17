@@ -172,29 +172,22 @@ integrate. Leave worktree removal to whoever integrates the branch.
 
 ---
 
-## Prompt-only queen
+## Teams and queens
 
-The owner may make any agent the temporary coordinator by sending this
-prompt with the objective filled in. This is a working role, not server
-state: there is no persisted promotion or special authority.
+The owner groups agents into teams on the dashboard (or via
+`POST /agents/<handle>/team`). Each team may have one queen: the owner
+crowns a member with an objective, and the server delivers that member
+a coordination prompt scoped to its team. The queen decomposes the
+objective into tasks (`agent-msg task-create`, using `--depends-on` to
+record ordering as a graph the dashboard draws), parcels team-assigned
+tasks out to teammates, and monitors their progress. A task the owner
+assigns to a team is delivered to its queen; if the team has no queen,
+every member is notified and whoever takes it runs
+`agent-msg task-update N --assignee <yourself>`.
 
-```text
-You are the coordinator (queen) for this objective:
-<OBJECTIVE AND DEFINITION OF DONE>
-
-Act as the owner's single coordination point. Inspect the current agents
-and tasks, decompose the objective into concrete tasks, and create and
-assign them through the existing agent-msg API. Normally coordinate rather
-than implement. Require workers to use branch task/<id> in a dedicated git
-worktree and to record that worktree on the task. Tag task messages with
-task-<id>. Track progress, dependencies, stopped agents, commits, tests,
-and integration. Resolve overlaps through direct agent messages, integrate
-one branch at a time, and give the owner concise progress and decision
-updates. Ask the owner before changing scope or the definition of done.
-```
-
-The owner ends or changes the role by messaging the agent again. Other
-agents and the server do not infer that a queen exists.
+The crown is stored on the team but carries no special server
+authority: it is a prompt-driven role, the owner retains every right,
+and a queen coordinates only its own team.
 
 ---
 
@@ -212,9 +205,14 @@ All endpoints accept/return JSON. The CLI is a thin wrapper.
   Returns `{ok, message_id, delivered_to_pane, delivery_error}`.
 - `GET  /messages?user=<handle>&limit=<n>` — recent traffic.
   **For history/audit only — not for inbox polling.** Delivery is push.
-- `GET  /tasks` — list tasks, including recorded worktree paths.
-- `POST /tasks` — body: `{title, description?, assignee?}`.
-- `PATCH /tasks/<id>` — body: `{status?, assignee?, worktree?}`.
+- `GET  /tasks` — list tasks, including worktree paths and `depends_on`.
+- `POST /tasks` — body: `{title, description?, assignee?, team_id?, depends_on?}`.
+- `PATCH /tasks/<id>` — body: `{status?, assignee?, worktree?, team_id?, depends_on?}`.
+  Assignee and team are mutually exclusive; setting one clears the other.
+- `GET  /teams` / `POST /teams` / `PATCH /teams/<id>` / `DELETE /teams/<id>` —
+  team management; `PATCH` with `{queen, objective?}` crowns a queen and
+  delivers the coordination prompt.
+- `POST /agents/<handle>/team` — body: `{team_id}` (null to leave).
 
 ---
 

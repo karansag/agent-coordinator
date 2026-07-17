@@ -88,6 +88,8 @@ class TaskCreateReq(BaseModel):
     title: str = Field(min_length=1)
     description: str | None = None
     assignee: str | None = None
+    team_id: int | None = None
+    depends_on: list[int] | None = None
 
 
 class TaskUpdateReq(BaseModel):
@@ -96,12 +98,66 @@ class TaskUpdateReq(BaseModel):
     status: Literal["open", "picked_up", "done"] | None = None
     assignee: str | None = None
     worktree: str | None = Field(default=None, min_length=1)
+    team_id: int | None = None
+    depends_on: list[int] | None = None
 
 
 class SpawnReq(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     flavor: Literal["claude", "codex", "generic"] = "generic"
+
+
+class TeamCreateReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+
+
+class TeamUpdateReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1)
+    queen: str | None = None
+    objective: str | None = Field(
+        default=None,
+        description="Coordination objective delivered with a queen promotion.",
+    )
+
+
+class AgentTeamReq(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    team_id: int | None = None
+
+
+def _queen_prompt(team: dict, objective: str) -> str:
+    teammates = [m for m in team["members"] if m != team["queen"]]
+    roster = ", ".join(teammates) if teammates else "(no teammates yet)"
+    return (
+        f"The owner has made you Queen of team '{team['name']}'. "
+        f"Your teammates: {roster}.\n\n"
+        f"Objective: {objective}\n\n"
+        "Act as the owner's coordination point for this team until the owner ends "
+        "or changes this role. Immediately notify each teammate, using context "
+        "queen-status, that you coordinate this team for this objective and that "
+        "their task coordination should route through you.\n\n"
+        "Decompose the objective into concrete tasks; create and assign them to "
+        "teammates with agent-msg task-create and agent-msg task-update, and "
+        "record ordering with --depends-on <ids> so the board shows the "
+        "dependency graph. Tasks "
+        "the owner assigns to the team are delivered to you: parcel them out by "
+        "reassigning or splitting them among teammates as appropriate, and "
+        "monitor your workers' progress. Normally coordinate rather than "
+        "implement. Require repository workers to use "
+        "branch task/<id> in a dedicated worktree and record it on the task. "
+        "Track progress, dependencies, stopped agents, commits, tests, and "
+        "integration; integrate one branch at a time. Keep the owner informed of "
+        "material progress and decisions, and ask before changing scope or the "
+        "definition of done. Coordinate only your own team.\n\n"
+        "This is a prompt-driven role, not special server authority. The owner "
+        "retains every right and can replace or demote you at any time."
+    )
 
 
 def _protocol_brief(user_id: str, peers: list[dict]) -> str:
@@ -157,7 +213,12 @@ def _protocol_brief(user_id: str, peers: list[dict]) -> str:
         f"run `agent-msg task-update N --status done`. "
         f"List tasks anytime: `agent-msg tasks`. You can file work for the "
         f"shared board with `agent-msg task-create \"title\"` (optionally "
-        f"add `--description` or `--assignee`)."
+        f"add `--description`, `--assignee`, or `--depends-on 3,5` to record "
+        f"ordering; dependencies show as a graph on the dashboard).\n"
+        f"\n"
+        f"The owner may group agents into teams, each with a queen who "
+        f"coordinates that team's work. Tasks can be assigned to a team; "
+        f"they reach the queen, who parcels them out."
     )
 
 
@@ -400,6 +461,34 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
         except HTTPException:
             pass  # assignee validated by callers; pane may still be gone
 
+    def _notify_team_assignment(task: dict):
+        team = db.get_team(conn, task["team_id"])
+        if team is None:
+            return
+        context = f"task #{task['id']}"
+        detail = f" Details: {task['description']}." if task.get("description") else ""
+        if team["queen"]:
+            content = (
+                f"Task #{task['id']} is assigned to your team '{team['name']}': "
+                f"{task['title']}.{detail} As queen, parcel it out: split it into "
+                f"subtasks or hand it to a teammate with agent-msg task-update "
+                f"{task['id']} --assignee <member>, then monitor progress."
+            )
+            targets = [team["queen"]]
+        else:
+            content = (
+                f"Task #{task['id']} is assigned to your team '{team['name']}' "
+                f"(no queen yet): {task['title']}.{detail} Coordinate with your "
+                f"teammates; whoever takes it should run agent-msg task-update "
+                f"{task['id']} --assignee <yourself>."
+            )
+            targets = team["members"]
+        for target in targets:
+            try:
+                _deliver_from_owner(target, content, context)
+            except HTTPException:
+                pass  # membership validated; a pane may still be gone
+
     def _require_registered_assignee(assignee: str | None):
         if assignee and db.get_recipient(conn, assignee) is None:
             raise HTTPException(
@@ -407,16 +496,37 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
                 detail={"error": "assignee not registered", "assignee": assignee},
             )
 
+    def _require_known_team(team_id: int | None):
+        if team_id is not None and db.get_team(conn, team_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "unknown team", "team_id": team_id},
+            )
+
     @app.get("/tasks")
     def tasks_list():
         return {"tasks": db.list_tasks(conn)}
 
+    def _set_deps(task_id: int, depends_on: list[int]):
+        try:
+            db.set_task_deps(conn, task_id, depends_on)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"error": str(exc)})
+
     @app.post("/tasks")
     def tasks_create(req: TaskCreateReq):
         _require_registered_assignee(req.assignee)
-        task = db.create_task(conn, req.title, req.description, req.assignee)
+        _require_known_team(req.team_id)
+        task = db.create_task(
+            conn, req.title, req.description, req.assignee, req.team_id
+        )
+        if req.depends_on:
+            _set_deps(task["id"], req.depends_on)
+            task = db.get_task(conn, task["id"])
         if task["assignee"]:
             _notify_assignment(task)
+        elif task["team_id"]:
+            _notify_team_assignment(task)
         return {"ok": True, "task": task}
 
     @app.patch("/tasks/{task_id}")
@@ -430,11 +540,18 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
         if "assignee" in req.model_fields_set:
             _require_registered_assignee(req.assignee)
             kwargs["assignee"] = req.assignee or None
+        if "team_id" in req.model_fields_set:
+            _require_known_team(req.team_id)
+            kwargs["team_id"] = req.team_id
         if "worktree" in req.model_fields_set:
             kwargs["worktree"] = req.worktree
+        if "depends_on" in req.model_fields_set:
+            _set_deps(task_id, req.depends_on or [])
         task = db.update_task(conn, task_id, **kwargs)
         if task["assignee"] and task["assignee"] != before["assignee"]:
             _notify_assignment(task)
+        elif task["team_id"] and task["team_id"] != before["team_id"]:
+            _notify_team_assignment(task)
         return {"ok": True, "task": task}
 
     @app.post("/agents/spawn")
@@ -484,6 +601,53 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
             "already_stopped": False,
         }
 
+    @app.get("/teams")
+    def teams_list():
+        return {"teams": db.list_teams(conn)}
+
+    @app.post("/teams")
+    def teams_create(req: TeamCreateReq):
+        return {"ok": True, "team": db.create_team(conn, req.name.strip())}
+
+    @app.patch("/teams/{team_id}")
+    def teams_update(team_id: int, req: TeamUpdateReq):
+        kwargs = {}
+        if req.name is not None:
+            kwargs["name"] = req.name.strip()
+        if "queen" in req.model_fields_set:
+            kwargs["queen"] = req.queen or None
+        try:
+            team = db.update_team(conn, team_id, **kwargs)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"error": str(exc)})
+        if team is None:
+            raise HTTPException(status_code=404, detail={"error": "unknown team"})
+        promotion = None
+        if kwargs.get("queen"):
+            objective = (req.objective or "").strip() or (
+                "Coordinate your team to execute the shared task board."
+            )
+            promotion = _deliver_from_owner(
+                team["queen"], _queen_prompt(team, objective), "queen-promotion"
+            )
+        return {"ok": True, "team": team, "promotion": promotion}
+
+    @app.delete("/teams/{team_id}")
+    def teams_delete(team_id: int):
+        if not db.delete_team(conn, team_id):
+            raise HTTPException(status_code=404, detail={"error": "unknown team"})
+        return {"ok": True}
+
+    @app.post("/agents/{user_id}/team")
+    def agents_set_team(user_id: str, req: AgentTeamReq):
+        try:
+            recipient = db.set_agent_team(conn, user_id, req.team_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail={"error": str(exc)})
+        if recipient is None:
+            raise HTTPException(status_code=404, detail={"error": "unknown agent"})
+        return {"ok": True, "recipient": recipient}
+
     @app.get("/", response_class=HTMLResponse)
     def portal():
         return PORTAL_PATH.read_text()
@@ -507,6 +671,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
             "recipients": recipients,
             "messages": msgs,
             "tasks": db.list_tasks(conn),
+            "teams": db.list_teams(conn),
         }
 
     @app.get("/api/peek/{user_id}")

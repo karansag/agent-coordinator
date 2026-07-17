@@ -6,8 +6,8 @@
     agent-msg recipients
     agent-msg whoami       # prints detected tmux pane + registered handle
     agent-msg tasks [--status open|picked_up|done]
-    agent-msg task-create TITLE [--description TEXT] [--assignee HANDLE]
-    agent-msg task-update ID --status open|picked_up|done [--assignee X] [--worktree PATH]
+    agent-msg task-create TITLE [--description TEXT] [--assignee HANDLE] [--depends-on 3,5]
+    agent-msg task-update ID --status open|picked_up|done [--assignee X] [--worktree PATH] [--depends-on 3,5]
 
 Defaults:
     --pane            current shell's tmux pane (via `TMUX_PANE`-targeted `tmux display-message`)
@@ -119,12 +119,19 @@ def cmd_tasks(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_deps(raw: str) -> list[int]:
+    """'3,5' -> [3, 5]; '' -> [] (clears dependencies on update)."""
+    return [int(part) for part in raw.split(",") if part.strip()]
+
+
 def cmd_task_create(args: argparse.Namespace) -> int:
     payload: dict = {"title": args.title}
     if args.description:
         payload["description"] = args.description
     if args.assignee:
         payload["assignee"] = args.assignee
+    if args.depends_on is not None:
+        payload["depends_on"] = _parse_deps(args.depends_on)
     r = httpx.post(f"{base_url()}/tasks", json=payload, timeout=5)
     print(r.text)
     return 0 if r.is_success else 1
@@ -138,8 +145,13 @@ def cmd_task_update(args: argparse.Namespace) -> int:
         payload["assignee"] = args.assignee
     if args.worktree is not None:
         payload["worktree"] = args.worktree
+    if args.depends_on is not None:
+        payload["depends_on"] = _parse_deps(args.depends_on)
     if not payload:
-        print("error: pass --status, --assignee, and/or --worktree", file=sys.stderr)
+        print(
+            "error: pass --status, --assignee, --worktree, and/or --depends-on",
+            file=sys.stderr,
+        )
         return 2
     r = httpx.patch(f"{base_url()}/tasks/{args.id}", json=payload, timeout=5)
     print(r.text)
@@ -212,6 +224,9 @@ def main(argv: list[str] | None = None) -> int:
     tcreate.add_argument("title")
     tcreate.add_argument("--description")
     tcreate.add_argument("--assignee")
+    tcreate.add_argument(
+        "--depends-on", help="comma-separated task ids this task waits on (e.g. 3,5)"
+    )
     tcreate.set_defaults(func=cmd_task_create)
 
     tup = sub.add_parser("task-update")
@@ -219,6 +234,10 @@ def main(argv: list[str] | None = None) -> int:
     tup.add_argument("--status", choices=["open", "picked_up", "done"])
     tup.add_argument("--assignee")
     tup.add_argument("--worktree")
+    tup.add_argument(
+        "--depends-on",
+        help="comma-separated task ids this task waits on; empty string clears",
+    )
     tup.set_defaults(func=cmd_task_update)
 
     who = sub.add_parser("whoami")

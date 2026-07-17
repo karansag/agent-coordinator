@@ -165,6 +165,7 @@ def test_cmd_task_update_records_worktree(monkeypatch, capsys):
         status="picked_up",
         assignee=None,
         worktree="/tmp/repo-task-7",
+        depends_on=None,
     )
 
     assert client.cmd_task_update(args) == 0
@@ -189,6 +190,7 @@ def test_cmd_task_create_files_task(monkeypatch, capsys):
         title="Investigate flaky build",
         description="CI failed twice",
         assignee="stoat",
+        depends_on="3,5",
     )
 
     assert client.cmd_task_create(args) == 0
@@ -197,5 +199,6 @@ def test_cmd_task_create_files_task(monkeypatch, capsys):
         "title": "Investigate flaky build",
         "description": "CI failed twice",
         "assignee": "stoat",
+        "depends_on": [3, 5],
     }
     assert capsys.readouterr().out == '{"ok": true, "task": {"id": 8}}\n'

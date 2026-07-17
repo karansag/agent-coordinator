@@ -142,6 +142,30 @@
   }
   button.queen-agent:hover { background: rgba(242,169,59,.18); color: var(--cream); }
   button.queen-agent:disabled { opacity: .6; cursor: wait; }
+
+  /* team boxes in the sidebar */
+  .teambox { border: 1px solid var(--line); border-radius: 10px; padding: 8px; margin-bottom: 10px; }
+  .teambox.over { border-color: var(--honey); background: rgba(242,169,59,.05); }
+  .teamhead { display: flex; align-items: baseline; gap: 8px; margin: 0 2px 7px; }
+  .teamhead .teamname {
+    font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--honey-dim);
+  }
+  .teamhead .queen-tag {
+    font-size: 10px; color: var(--honey);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .teamhead .mini { margin-left: auto; flex: none; }
+  .teamempty {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 10px;
+    font-size: 10px; color: var(--cream-dim); text-align: center;
+  }
+  .crown { color: var(--honey); font-size: 11px; margin-left: 3px; }
+  .unteam-drop { border-radius: 10px; }
+  .unteam-drop.over { outline: 1px dashed var(--honey); outline-offset: 3px; }
+  .unteam-drop .hint { font-size: 10px; color: var(--cream-dim); margin: 0 2px 6px; }
+  form.newteam { display: flex; gap: 6px; margin: 2px 0 14px; }
+  form.newteam input { flex: 1; min-width: 0; }
   .chip-card .badge {
     position: absolute; top: -4px; right: -4px; width: 10px; height: 10px;
     border-radius: 50%; background: var(--honey); box-shadow: 0 0 8px rgba(242,169,59,.9);
@@ -207,6 +231,8 @@
   .tcard[draggable="true"] { cursor: grab; }
   .tcard.dragging { opacity: .45; cursor: grabbing; border-style: dashed; border-color: var(--honey-dim); }
   .col.done .tcard { opacity: .6; }
+  .tcard.blocked { border-style: dashed; }
+  .tcard .blocked-tag { color: var(--honey); }
   .tcard .t { font-size: 12.5px; }
   .tcard .meta { font-size: 10px; color: var(--cream-dim); margin-top: 3px; }
   .tcard .foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
@@ -404,18 +430,6 @@ async function patchTask(id, patch) {
   await fetch(`/tasks/${id}`, { method: "PATCH", headers: JSONH, body: JSON.stringify(patch) });
 }
 
-function queenPrompt(objective) {
-  return `The owner has promoted you to Queen, the coordinator for this objective:
-
-${objective}
-
-Act as the owner's coordination point until the owner ends or changes this role. Immediately run agent-msg recipients and notify every other live agent, using context queen-status, that you are the Queen for this objective and that task coordination should route through you.
-
-Inspect the current agents and shared task board, decompose the objective into concrete tasks, and create and assign them with agent-msg task-create and agent-msg task-update. Normally coordinate rather than implement. Require repository workers to use branch task/<id> in a dedicated worktree and record it on the task. Tag coordination messages task-<id>. Track progress, dependencies, stopped agents, commits, tests, and integration. Resolve overlap directly with agents and integrate one branch at a time. Keep the owner informed of material progress and decisions, and ask before changing scope or the definition of done.
-
-This is a prompt-driven role, not special server authority. The owner retains every right and can replace or demote you at any time.`;
-}
-
 function Avatar({ name, size }) {
   const base = name.replace(/-\d+$/, "");
   const emoji = ANIMAL_EMOJI[base];
@@ -426,10 +440,10 @@ function Avatar({ name, size }) {
 
 /* ---------- roster (right sidebar) ---------- */
 
-function RosterChip({ r, state, selected, unread, ping, refresh }) {
+function RosterChip({ r, state, team, selected, unread, ping, refresh }) {
   const [stopping, setStopping] = useState(false);
-  const [promoting, setPromoting] = useState(false);
-  const [promoted, setPromoted] = useState(false);
+  const [crowning, setCrowning] = useState(false);
+  const isQueen = !!team && team.queen === r.user_id;
   const task = currentTask(state.tasks, r.user_id);
   const flavor = (r.flavor || "generic").toLowerCase();
   const status = agentStatus(r);
@@ -458,51 +472,52 @@ function RosterChip({ r, state, selected, unread, ping, refresh }) {
       refresh();
     } else alert(`Could not stop ${r.user_id}.`);
   };
-  const promote = async (e) => {
+  const crown = async (e) => {
     e.stopPropagation();
-    const raw = prompt(
-      `What objective should ${r.user_id} coordinate as Queen?`,
-      "Coordinate the current task board and deliver the owner's objective.",
-    );
-    if (raw === null) return;
-    const objective = raw.trim();
-    if (!objective) {
-      alert("A Queen needs a coordination objective.");
+    if (isQueen) {
+      if (!confirm(`Remove ${r.user_id} as queen of ${team.name}?`)) return;
+      setCrowning(true);
+      await fetch(`/teams/${team.id}`, {
+        method: "PATCH", headers: JSONH, body: JSON.stringify({ queen: null }),
+      });
+      setCrowning(false);
+      refresh();
       return;
     }
-    setPromoting(true);
-    try {
-      const res = await fetch("/owner/send", {
-        method: "POST", headers: JSONH,
-        body: JSON.stringify({
-          recipient: r.user_id,
-          context: "queen-promotion",
-          content: queenPrompt(objective),
-        }),
-      });
-      if (!res.ok) throw new Error("promotion delivery failed");
-      setPromoted(true);
-      setTimeout(() => setPromoted(false), 3000);
-      refresh();
-    } catch {
-      alert(`Could not promote ${r.user_id}; the prompt was not delivered.`);
-    } finally {
-      setPromoting(false);
-    }
+    const raw = prompt(
+      `Objective for ${r.user_id} as queen of ${team.name}?`,
+      "Coordinate your team to execute the shared task board.",
+    );
+    if (raw === null) return;
+    setCrowning(true);
+    const res = await fetch(`/teams/${team.id}`, {
+      method: "PATCH", headers: JSONH,
+      body: JSON.stringify({ queen: r.user_id, objective: raw.trim() }),
+    });
+    setCrowning(false);
+    if (!res.ok) alert(`Could not make ${r.user_id} queen.`);
+    refresh();
+  };
+  const dragStart = (e) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("application/x-agent-msg-agent", r.user_id);
+    e.dataTransfer.setData("text/plain", r.user_id);
   };
   return html`<div class=${`chip-card state-${st.cls} ${selected ? "sel" : ""} ${ping ? "ping" : ""}`}
+      draggable="true" onDragStart=${dragStart}
       onClick=${() => { location.hash = selected ? "#/" : focusHash(r.user_id); }}>
     <${Avatar} name=${r.user_id} size="small" />
     <div class="who">
-      <div class="nm">${r.user_id}<span class=${`status ${st.cls}`} title=${st.word}></span></div>
+      <div class="nm">${r.user_id}${isQueen && html`<span class="crown" title="team queen">♛</span>`}<span class=${`status ${st.cls}`} title=${st.word}></span></div>
       <div class="sub">${sub}</div>
       <div class="tech" title=${`${flavor} · ${r.tmux_pane}`}><span class="flavor">${flavor}</span> · ${r.tmux_pane}</div>
     </div>
     <div class="controls">
       <span class="flav" title=${flavor}>${FLAVOR_ICON[flavor] || FLAVOR_ICON.generic}</span>
-      ${r.pane_alive && html`<button type="button" class="queen-agent" disabled=${promoting}
-        title=${`promote ${r.user_id} to Queen`} aria-label=${`Promote ${r.user_id} to Queen`}
-        onClick=${promote}>${promoting ? "sending…" : promoted ? "sent ✓" : "promote"}</button>`}
+      ${team && r.pane_alive && html`<button type="button" class="queen-agent" disabled=${crowning}
+        title=${isQueen ? `remove ${r.user_id} as queen` : `make ${r.user_id} queen of ${team.name}`}
+        aria-label=${isQueen ? `Remove ${r.user_id} as queen` : `Make ${r.user_id} queen of ${team.name}`}
+        onClick=${crown}>${crowning ? "…" : isQueen ? "♛ queen" : "♛"}</button>`}
       ${r.pane_alive && html`<button type="button" class="stop-agent" disabled=${stopping}
         title=${`stop ${r.user_id}`} onClick=${stop}>${stopping ? "stopping…" : "stop"}</button>`}
     </div>
@@ -536,23 +551,106 @@ function SpawnControl({ refresh }) {
 }
 
 const ACTIVITY_RANK = { working: 0, needs_attention: 1, idle: 2, unknown: 3 };
+const AGENT_DRAG_TYPE = "application/x-agent-msg-agent";
 
-function Roster({ state, focusUser, unreadFor, pings, refresh }) {
-  const running = state.recipients.filter(r => r.pane_alive)
+function sortByActivity(agents) {
+  return agents
     .map((r, i) => [r, i])
     .sort(([a, ai], [b, bi]) =>
       (ACTIVITY_RANK[agentStatus(a)] ?? 3) - (ACTIVITY_RANK[agentStatus(b)] ?? 3) || ai - bi)
     .map(([r]) => r);
+}
+
+async function moveAgentToTeam(user, teamId, refresh) {
+  await fetch(`/agents/${encodeURIComponent(user)}/team`, {
+    method: "POST", headers: JSONH, body: JSON.stringify({ team_id: teamId }),
+  });
+  refresh();
+}
+
+function agentDropProps(setOver, onDropUser) {
+  return {
+    onDragOver: (e) => {
+      if (![...e.dataTransfer.types].includes(AGENT_DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setOver(true);
+    },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOver(false); },
+    onDrop: (e) => {
+      e.preventDefault();
+      setOver(false);
+      const user = e.dataTransfer.getData(AGENT_DRAG_TYPE);
+      if (user) onDropUser(user);
+    },
+  };
+}
+
+function TeamBox({ team, members, chip, refresh }) {
+  const [over, setOver] = useState(false);
+  const disband = async (e) => {
+    e.stopPropagation();
+    if (!confirm(`Disband team ${team.name}? Its agents keep running.`)) return;
+    await fetch(`/teams/${team.id}`, { method: "DELETE" });
+    refresh();
+  };
+  return html`<div class=${`teambox ${over ? "over" : ""}`}
+      ...${agentDropProps(setOver, user => moveAgentToTeam(user, team.id, refresh))}>
+    <div class="teamhead">
+      <span class="teamname">${team.name}</span>
+      ${team.queen
+        ? html`<span class="queen-tag" title=${`queen: ${team.queen}`}>♛ ${team.queen}</span>`
+        : html`<span class="queen-tag" style="opacity:.55">no queen</span>`}
+      <button type="button" class="mini" title="disband team" onClick=${disband}>disband</button>
+    </div>
+    ${members.length === 0
+      ? html`<div class="teamempty">drag agents here</div>`
+      : members.map(chip)}
+  </div>`;
+}
+
+function NewTeam({ refresh }) {
+  const [name, setName] = useState("");
+  const create = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    await fetch("/teams", {
+      method: "POST", headers: JSONH, body: JSON.stringify({ name: name.trim() }),
+    });
+    setName("");
+    refresh();
+  };
+  return html`<form class="newteam" onSubmit=${create}>
+    <input type="text" placeholder="team name" value=${name}
+      onInput=${e => setName(e.target.value)} />
+    <button class="act" type="submit">new team</button>
+  </form>`;
+}
+
+function Roster({ state, focusUser, unreadFor, pings, refresh }) {
+  const [overUnteam, setOverUnteam] = useState(false);
+  const teams = state.teams || [];
+  const teamById = new Map(teams.map(t => [t.id, t]));
+  const running = sortByActivity(state.recipients.filter(r => r.pane_alive));
   const stopped = state.recipients.filter(r => !r.pane_alive);
+  const unteamed = running.filter(r => !teamById.has(r.team_id));
   const chip = (r) => html`<${RosterChip} key=${r.user_id} r=${r} state=${state}
+    team=${teamById.get(r.team_id) || null}
     selected=${focusUser === r.user_id} unread=${unreadFor(r.user_id)}
     ping=${!!pings[r.user_id]} refresh=${refresh} />`;
   return html`<aside class="roster">
     <h2>agents ${running.length > 0 && html`<span class="count">· ${running.length}</span>`}</h2>
-    ${running.length === 0
-      ? html`<div class="empty" style="padding:20px">No agents running.<br /><br />
-          <code>agent-msg register</code></div>`
-      : running.map(chip)}
+    ${teams.map(t => html`<${TeamBox} key=${t.id} team=${t} chip=${chip} refresh=${refresh}
+      members=${running.filter(r => r.team_id === t.id)} />`)}
+    <${NewTeam} refresh=${refresh} />
+    <div class=${`unteam-drop ${overUnteam ? "over" : ""}`}
+        ...${agentDropProps(setOverUnteam, user => moveAgentToTeam(user, null, refresh))}>
+      ${teams.length > 0 && html`<div class="hint">no team · drop here to unteam</div>`}
+      ${running.length === 0
+        ? html`<div class="empty" style="padding:20px">No agents running.<br /><br />
+            <code>agent-msg register</code></div>`
+        : unteamed.map(chip)}
+    </div>
     ${stopped.length > 0 && html`<details class="stopped">
       <summary>stopped · ${stopped.length}</summary>
       ${stopped.map(chip)}
@@ -563,7 +661,7 @@ function Roster({ state, focusUser, unreadFor, pings, refresh }) {
 
 /* ---------- overview mode ---------- */
 
-function TaskCard({ t, agentIds, refresh }) {
+function TaskCard({ t, agentIds, teams, blockers, refresh }) {
   const [dragging, setDragging] = useState(false);
   const when = new Date(t.created_at * 1000)
     .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -571,6 +669,8 @@ function TaskCard({ t, agentIds, refresh }) {
     ? agentIds.concat(t.assignee) : agentIds;
   const act = async (p) => { await patchTask(t.id, p); refresh(); };
   const draggable = t.status !== "done";
+  const blocked = blockers.length > 0 && t.status !== "done";
+  const deps = t.depends_on || [];
   const dragStart = (e) => {
     if (!draggable) return;
     e.dataTransfer.effectAllowed = "move";
@@ -578,15 +678,25 @@ function TaskCard({ t, agentIds, refresh }) {
     e.dataTransfer.setData("text/plain", String(t.id));
     setDragging(true);
   };
-  return html`<div class=${`tcard ${dragging ? "dragging" : ""}`} draggable=${draggable}
+  const onAssign = (e) => {
+    const v = e.target.value;
+    if (v.startsWith("t:")) act({ team_id: Number(v.slice(2)) });
+    else if (v) act({ assignee: v });
+    else act({ assignee: null, team_id: null });
+  };
+  return html`<div class=${`tcard ${dragging ? "dragging" : ""} ${blocked ? "blocked" : ""}`} draggable=${draggable}
       onDragStart=${dragStart} onDragEnd=${() => setDragging(false)}
-      title=${draggable ? "Drag this task onto a live bee to assign it" : "Reopen this task before assigning it by drag"}>
+      title=${draggable ? "Drag this task onto a bee or team in the activity view to assign it" : "Reopen this task before assigning it by drag"}>
     <div class="t">${t.title}</div>
-    <div class="meta">#${t.id} · created ${when}${t.description ? ` · ${t.description}` : ""}${t.worktree ? ` · worktree ${t.worktree}` : ""}</div>
+    <div class="meta">#${t.id} · created ${when}${deps.length > 0 ? ` · after ${deps.map(d => `#${d}`).join(" ")}` : ""}${t.description ? ` · ${t.description}` : ""}${t.worktree ? ` · worktree ${t.worktree}` : ""}</div>
+    ${blocked && html`<div class="meta blocked-tag" title="dependencies not yet done">blocked by ${blockers.map(d => `#${d}`).join(" ")}</div>`}
     <div class="foot">
-      <select title="assignee" value=${t.assignee || ""}
-        onChange=${e => act({ assignee: e.target.value })}>
+      <select title="assignee" value=${t.team_id ? `t:${t.team_id}` : (t.assignee || "")}
+        onChange=${onAssign}>
         <option value="">unassigned</option>
+        ${teams.length > 0 && html`<optgroup label="teams">
+          ${teams.map(x => html`<option key=${`t:${x.id}`} value=${`t:${x.id}`}>team ${x.name}</option>`)}
+        </optgroup>`}
         ${ids.map(a => html`<option key=${a} value=${a}>${a}${agentIds.includes(a) ? "" : " (stopped)"}</option>`)}
       </select>
       ${t.status === "done"
@@ -600,11 +710,14 @@ function Kanban({ state, refresh }) {
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const agentIds = state.recipients.filter(r => r.pane_alive).map(r => r.user_id);
+  const teams = state.teams || [];
+  const byId = new Map(state.tasks.map(t => [t.id, t]));
   const create = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
     const body = { title: title.trim() };
-    if (assignee) body.assignee = assignee;
+    if (assignee.startsWith("t:")) body.team_id = Number(assignee.slice(2));
+    else if (assignee) body.assignee = assignee;
     await fetch("/tasks", { method: "POST", headers: JSONH, body: JSON.stringify(body) });
     setTitle("");
     refresh();
@@ -621,6 +734,9 @@ function Kanban({ state, refresh }) {
         value=${title} onInput=${e => setTitle(e.target.value)} />
       <select value=${assignee} onChange=${e => setAssignee(e.target.value)}>
         <option value="">unassigned</option>
+        ${teams.length > 0 && html`<optgroup label="teams">
+          ${teams.map(x => html`<option key=${`t:${x.id}`} value=${`t:${x.id}`}>team ${x.name}</option>`)}
+        </optgroup>`}
         ${agentIds.map(a => html`<option key=${a} value=${a}>${a}</option>`)}
       </select>
       <button class="act" type="submit">create task</button>
@@ -634,7 +750,9 @@ function Kanban({ state, refresh }) {
             ${items.length === 0
               ? html`<div class="colempty">none</div>`
               : items.map(t => html`<${TaskCard} key=${t.id} t=${t}
-                  agentIds=${agentIds} refresh=${refresh} />`)}
+                  agentIds=${agentIds} teams=${teams}
+                  blockers=${(t.depends_on || []).filter(d => (byId.get(d) || {}).status !== "done")}
+                  refresh=${refresh} />`)}
           </div>
         </div>`;
       })}
@@ -656,8 +774,11 @@ function HiveView({ state, refresh }) {
   const pendingShipmentsRef = useRef([]);
   const shipmentsRef = useRef([]);
   const dragTaskRef = useRef(null);
+  const dragBeeRef = useRef(null);
   const dragPointRef = useRef(null);
   const dropTargetRef = useRef(null);
+  const dropTeamRef = useRef(null);
+  const teamBoxesRef = useRef([]);
   const drawRef = useRef(null);
   const [dropStatus, setDropStatus] = useState("");
   stateRef.current = state;
@@ -738,6 +859,63 @@ function HiveView({ state, refresh }) {
       ctx.fillStyle = "#8fbf6f"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
       ctx.fillText(`shipped · ${done}`, doneX - 24, 28);
 
+      // Teams: teammates cluster together on the flight ellipse; each team
+      // gets a labeled outline that is also a drop target for bees and tasks.
+      const teamsList = data.teams || [];
+      const teamById = new Map(teamsList.map(t => [t.id, t]));
+      const teamColor = (name, alpha) => `hsl(${hue(name)} 45% 62% / ${alpha})`;
+      const grouped = [...running].sort((a, b) =>
+        (a.team_id && teamById.has(a.team_id) ? a.team_id : 1e9) -
+        (b.team_id && teamById.has(b.team_id) ? b.team_id : 1e9));
+      const homes = grouped.map((_, i) => {
+        const angle = Math.PI + (i / Math.max(1, grouped.length)) * Math.PI * 2;
+        return { x: center.x + Math.cos(angle) * Math.min(width * .36, 330),
+          y: 132 + Math.sin(angle) * 67 };
+      });
+      teamBoxesRef.current = [];
+      {
+        const bounds = new Map();
+        grouped.forEach((r, i) => {
+          if (!r.team_id || !teamById.has(r.team_id)) return;
+          const h = homes[i];
+          const b = bounds.get(r.team_id) || { minX: h.x, maxX: h.x, minY: h.y, maxY: h.y };
+          b.minX = Math.min(b.minX, h.x); b.maxX = Math.max(b.maxX, h.x);
+          b.minY = Math.min(b.minY, h.y); b.maxY = Math.max(b.maxY, h.y);
+          bounds.set(r.team_id, b);
+        });
+        let emptyX = 12;
+        for (const t of teamsList) {
+          const b = bounds.get(t.id);
+          const box = b
+            ? { x: b.minX - 44, y: b.minY - 40, w: b.maxX - b.minX + 88, h: b.maxY - b.minY + 90 }
+            : { x: emptyX, y: 28, w: 94, h: 44 };
+          if (!b) emptyX += 104;
+          box.x = Math.max(4, box.x); box.y = Math.max(24, box.y);
+          box.w = Math.min(box.w, width - box.x - 4);
+          box.h = Math.min(box.h, 254 - box.y);
+          teamBoxesRef.current.push({ id: t.id, name: t.name, queen: t.queen, ...box });
+        }
+        const draggingSomething = dragTaskRef.current !== null || dragBeeRef.current;
+        for (const box of teamBoxesRef.current) {
+          const over = draggingSomething && dropTeamRef.current === box.id;
+          ctx.save();
+          ctx.strokeStyle = teamColor(box.name, over ? .95 : .4);
+          ctx.lineWidth = over ? 2 : 1;
+          ctx.setLineDash(over ? [] : [5, 4]);
+          ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 12); ctx.stroke();
+          if (over) {
+            ctx.fillStyle = teamColor(box.name, .08);
+            ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 12); ctx.fill();
+          }
+          ctx.restore();
+          ctx.fillStyle = teamColor(box.name, .95);
+          ctx.font = "9px ui-monospace, monospace";
+          ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+          ctx.fillText(box.queen ? `${box.name} · ♛ ${box.queen}` : box.name,
+            box.x + 8, box.y + 11);
+        }
+      }
+
       const waiting = (data.tasks || []).filter(t =>
         t.status !== "done" && (!t.assignee || !live.has(t.assignee)));
       const carriedCount = (data.tasks || []).filter(t =>
@@ -747,28 +925,50 @@ function HiveView({ state, refresh }) {
       const rows = Math.ceil(visible.length / cols);
       const cellX = 38, cellY = 34;
       taskCellsRef.current = [];
-      if (dragTaskRef.current === null) {
+      if (dragTaskRef.current === null && !dragBeeRef.current) {
         ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`task comb · ${waiting.length} waiting · ${carriedCount} carried`, center.x, 17);
       }
+      const doneIds = new Set((data.tasks || [])
+        .filter(t => t.status === "done").map(t => t.id));
       visible.forEach((task, i) => {
         const col = i % cols, row = Math.floor(i / cols);
         const x = center.x + (col - (cols - 1) / 2) * cellX;
         const y = center.y - ((rows - 1) * cellY) / 2 + row * cellY + (col % 2 ? cellY / 2 : 0);
         const stranded = task.assignee && !live.has(task.assignee);
+        const team = (task.team_id && teamById.get(task.team_id)) || null;
+        const blocked = (task.depends_on || []).some(d => !doneIds.has(d));
+        taskCellsRef.current.push({ x, y, task, stranded, team, blocked });
+      });
+      // dependency edges, drawn under the cells they connect
+      const cellById = new Map(taskCellsRef.current.map(c => [c.task.id, c]));
+      ctx.save(); ctx.strokeStyle = "rgba(242,169,59,.3)"; ctx.lineWidth = 1;
+      for (const cell of taskCellsRef.current)
+        for (const dep of cell.task.depends_on || []) {
+          const from = cellById.get(dep);
+          if (!from) continue;
+          ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(cell.x, cell.y); ctx.stroke();
+        }
+      ctx.restore();
+      for (const cell of taskCellsRef.current) {
+        const { x, y, task, stranded, team, blocked } = cell;
         const lifted = dragPointRef.current && dragTaskRef.current === task.id;
         if (lifted) ctx.globalAlpha = .3;
-        hex(x, y, 18, stranded ? "rgba(224,108,85,.10)" : "rgba(242,169,59,.12)",
-          stranded ? "#e06c55" : "#b97f27");
+        ctx.save();
+        if (blocked) ctx.setLineDash([3, 3]);
+        hex(x, y, 18,
+          stranded ? "rgba(224,108,85,.10)" : team ? teamColor(team.name, .12) : "rgba(242,169,59,.12)",
+          stranded ? "#e06c55" : team ? teamColor(team.name, .8) : "#b97f27");
+        ctx.restore();
         ctx.fillStyle = stranded ? "#e06c55" : "#f2a93b";
         ctx.font = "9px ui-monospace, monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`#${task.id}`, x, y + .5);
         if (lifted) ctx.globalAlpha = 1;
-        taskCellsRef.current.push({ x, y, task, stranded });
-      });
+      }
       if (waiting.length > visible.length) {
         ctx.fillStyle = "#a89878"; ctx.font = "9px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`+${waiting.length - visible.length} more`, center.x, 202);
       }
 
@@ -777,12 +977,11 @@ function HiveView({ state, refresh }) {
       ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       ctx.fillText("owner", ownerNode.x, 253);
 
-      running.forEach((r, i) => {
+      grouped.forEach((r, i) => {
         const name = r.user_id;
         const seed = hue(name);
-        const angle = Math.PI + (i / Math.max(1, running.length)) * Math.PI * 2;
-        const homeX = center.x + Math.cos(angle) * Math.min(width * .36, 330);
-        const homeY = 132 + Math.sin(angle) * 67;
+        const homeX = homes[i].x;
+        const homeY = homes[i].y;
         const mine = (data.tasks || []).filter(t => t.assignee === name && t.status !== "done")
           .sort((a, b) => (a.status === "picked_up" ? -1 : 1) - (b.status === "picked_up" ? -1 : 1)
             || b.updated_at - a.updated_at);
@@ -831,9 +1030,16 @@ function HiveView({ state, refresh }) {
         ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
         ctx.fillText(name, x, y + (picked ? 35 : 19));
-        if (r.activity && r.activity.status === "needs_attention") {
+        const attention = r.activity && r.activity.status === "needs_attention";
+        if (attention) {
           ctx.fillStyle = "#f2a93b"; ctx.font = "bold 13px ui-monospace, monospace";
           ctx.textBaseline = "alphabetic"; ctx.fillText("!", x, y - 14);
+        }
+        const myTeam = (r.team_id && teamById.get(r.team_id)) || null;
+        if (myTeam && myTeam.queen === name) {
+          ctx.fillStyle = "#f2a93b"; ctx.font = "11px ui-monospace, monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+          ctx.fillText("♛", x, y - (attention ? 26 : 14));
         }
       });
 
@@ -841,6 +1047,36 @@ function HiveView({ state, refresh }) {
         const dragged = (data.tasks || []).find(t => t.id === dragTaskRef.current);
         if (dragged) token(dragged, dragPointRef.current.x, dragPointRef.current.y);
       }
+      const dragBee = dragBeeRef.current && bees.get(dragBeeRef.current);
+      if (dragBee && dragPointRef.current) {
+        const p = dragPointRef.current;
+        ctx.save(); ctx.strokeStyle = "rgba(240,230,210,.3)"; ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(dragBee.x, dragBee.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+        ctx.restore();
+        ctx.save(); ctx.globalAlpha = .85;
+        ctx.fillStyle = `hsl(${hue(dragBeeRef.current)} 42% 58%)`;
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(22,18,12,.5)";
+        ctx.fillRect(p.x - 4, p.y - 6, 2.5, 12); ctx.fillRect(p.x + 2, p.y - 6, 2.5, 12);
+        ctx.restore();
+      }
+      const dropLabel = (label, ax, ay) => {
+        ctx.font = "11px ui-monospace, monospace";
+        const labelW = ctx.measureText(label).width + 14;
+        const lx = Math.max(5, Math.min(width - labelW - 5, ax - labelW / 2));
+        const ly = Math.max(5, ay);
+        ctx.fillStyle = "#241c11"; ctx.beginPath(); ctx.roundRect(lx, ly, labelW, 21, 6); ctx.fill();
+        ctx.strokeStyle = "#f2a93b"; ctx.stroke();
+        ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.fillText(label, lx + 7, ly + 11);
+      };
+      const banner = (text) => {
+        ctx.fillStyle = "#f2a93b"; ctx.font = "11px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+        ctx.fillText(text, width / 2, 18);
+      };
+      const targetBox = dropTeamRef.current != null &&
+        teamBoxesRef.current.find(b => b.id === dropTeamRef.current);
       const dropTarget = dropTargetRef.current && bees.get(dropTargetRef.current);
       if (dragTaskRef.current && dropTarget) {
         ctx.save();
@@ -848,19 +1084,22 @@ function HiveView({ state, refresh }) {
         ctx.shadowColor = "rgba(242,169,59,.8)"; ctx.shadowBlur = 13;
         ctx.beginPath(); ctx.arc(dropTarget.x, dropTarget.y, 24, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
-        const label = `assign #${dragTaskRef.current} to ${dropTargetRef.current}`;
-        ctx.font = "11px ui-monospace, monospace";
-        const labelW = ctx.measureText(label).width + 14;
-        const lx = Math.max(5, Math.min(width - labelW - 5, dropTarget.x - labelW / 2));
-        const ly = Math.max(5, dropTarget.y - 43);
-        ctx.fillStyle = "#241c11"; ctx.beginPath(); ctx.roundRect(lx, ly, labelW, 21, 6); ctx.fill();
-        ctx.strokeStyle = "#f2a93b"; ctx.stroke();
-        ctx.fillStyle = "#f0e6d2"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.fillText(label, lx + 7, ly + 11);
+        dropLabel(`assign #${dragTaskRef.current} to ${dropTargetRef.current}`,
+          dropTarget.x, Math.max(5, dropTarget.y - 43));
+      } else if (dragTaskRef.current && targetBox) {
+        dropLabel(`assign #${dragTaskRef.current} to team ${targetBox.name}`,
+          targetBox.x + targetBox.w / 2, Math.max(5, targetBox.y - 26));
       } else if (dragTaskRef.current) {
-        ctx.fillStyle = "#f2a93b"; ctx.font = "11px ui-monospace, monospace";
-        ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-        ctx.fillText(`drop task #${dragTaskRef.current} on a live bee`, width / 2, 18);
+        banner(`drop task #${dragTaskRef.current} on a bee or a team`);
+      } else if (dragBeeRef.current && targetBox) {
+        dropLabel(`move ${dragBeeRef.current} to team ${targetBox.name}`,
+          targetBox.x + targetBox.w / 2, Math.max(5, targetBox.y - 26));
+      } else if (dragBeeRef.current) {
+        const r = grouped.find(x => x.user_id === dragBeeRef.current);
+        const home = r && r.team_id && teamById.get(r.team_id);
+        banner(home
+          ? `release to take ${dragBeeRef.current} out of team ${home.name}`
+          : `drop ${dragBeeRef.current} on a team`);
       }
 
       const endpoint = (name) => name === "owner" ? ownerNode : (bees.get(name) || ownerNode);
@@ -914,8 +1153,12 @@ function HiveView({ state, refresh }) {
       const taskCell = taskHoverRef.current;
       if (!hovered && taskCell) {
         const task = taskCell.task;
-        const stateLabel = taskCell.stranded ? `assigned to stopped ${task.assignee}` : "waiting";
-        const label = `#${task.id} · ${task.title} · ${stateLabel} · drag onto a bee to assign`;
+        const stateLabel = taskCell.stranded
+          ? `assigned to stopped ${task.assignee}`
+          : taskCell.team ? `team ${taskCell.team.name}` : "waiting";
+        const blockedLabel = taskCell.blocked
+          ? ` · blocked (after ${(task.depends_on || []).map(d => `#${d}`).join(" ")})` : "";
+        const label = `#${task.id} · ${task.title} · ${stateLabel}${blockedLabel} · drag onto a bee or team`;
         ctx.font = "10px ui-monospace, monospace";
         const w = Math.min(width - 16, ctx.measureText(label).width + 12);
         const tx = Math.max(8, Math.min(width - w - 8, taskCell.x - w / 2));
@@ -939,6 +1182,11 @@ function HiveView({ state, refresh }) {
       const p = at(e);
       return taskCellsRef.current.find(cell => Math.hypot(p.x - cell.x, p.y - cell.y) < 20) || null;
     };
+    const hitTeam = (e) => {
+      const p = at(e);
+      return teamBoxesRef.current.find(b =>
+        p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) || null;
+    };
     const taskId = (e) => {
       const raw = e.dataTransfer?.getData("application/x-agent-msg-task") ||
         e.dataTransfer?.getData("text/plain");
@@ -946,8 +1194,10 @@ function HiveView({ state, refresh }) {
     };
     const clearDrop = () => {
       dragTaskRef.current = null;
+      dragBeeRef.current = null;
       dragPointRef.current = null;
       dropTargetRef.current = null;
+      dropTeamRef.current = null;
       canvas.style.cursor = "default";
       if (reduced) draw(performance.now(), true);
     };
@@ -972,10 +1222,49 @@ function HiveView({ state, refresh }) {
         setDropStatus(`Could not assign #${id}; task was not changed.`);
       }
     };
+    const assignTeam = async (id, box) => {
+      const task = (stateRef.current.tasks || []).find(t => t.id === id);
+      if (!task || task.status === "done") {
+        setDropStatus(`Task #${id} cannot be assigned by drag.`);
+        return;
+      }
+      if (task.team_id === box.id) {
+        setDropStatus(`#${id} is already assigned to team ${box.name}.`);
+        return;
+      }
+      try {
+        const r = await fetch(`/tasks/${id}`, {
+          method: "PATCH", headers: JSONH, body: JSON.stringify({ team_id: box.id }),
+        });
+        if (!r.ok) throw new Error("assignment failed");
+        setDropStatus(`Assigned #${id} to team ${box.name}.`);
+        refresh();
+      } catch {
+        setDropStatus(`Could not assign #${id}; task was not changed.`);
+      }
+    };
+    const setBeeTeam = async (user, teamId, doneLabel) => {
+      try {
+        const r = await fetch(`/agents/${encodeURIComponent(user)}/team`, {
+          method: "POST", headers: JSONH, body: JSON.stringify({ team_id: teamId }),
+        });
+        if (!r.ok) throw new Error("move failed");
+        setDropStatus(doneLabel);
+        refresh();
+      } catch {
+        setDropStatus(`Could not move ${user}.`);
+      }
+    };
     let press = null;
     let suppressClick = false;
     const pointerDown = (e) => {
       if (e.button !== 0) return;
+      const bee = hit(e);
+      if (bee) {
+        press = { bee, start: at(e), moved: false };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
       const cell = hitTask(e);
       if (!cell) return;
       press = { id: cell.task.id, start: at(e), moved: false };
@@ -987,21 +1276,43 @@ function HiveView({ state, refresh }) {
       if (!press.moved && Math.hypot(p.x - press.start.x, p.y - press.start.y) < 5) return;
       press.moved = true;
       hoverRef.current = null; taskHoverRef.current = null;
-      dragTaskRef.current = press.id;
       dragPointRef.current = p;
-      dropTargetRef.current = hit(e);
-      canvas.style.cursor = dropTargetRef.current ? "copy" : "grabbing";
+      if (press.bee) {
+        dragBeeRef.current = press.bee;
+        const box = hitTeam(e);
+        dropTeamRef.current = box ? box.id : null;
+        canvas.style.cursor = "grabbing";
+      } else {
+        dragTaskRef.current = press.id;
+        dropTargetRef.current = hit(e);
+        const box = dropTargetRef.current ? null : hitTeam(e);
+        dropTeamRef.current = box ? box.id : null;
+        canvas.style.cursor =
+          dropTargetRef.current || dropTeamRef.current != null ? "copy" : "grabbing";
+      }
       if (reduced) draw(performance.now(), true);
     };
     const pointerUp = async (e) => {
       if (!press) return;
-      const { id, moved } = press;
+      const { id, bee, moved } = press;
       press = null;
       if (!moved) return;
       suppressClick = true;
-      const assignee = hit(e);
+      const targetBee = hit(e);
+      const box = hitTeam(e);
       clearDrop();
-      if (assignee) await assign(id, assignee);
+      if (bee) {
+        const r = (stateRef.current.recipients || []).find(x => x.user_id === bee);
+        const teams = stateRef.current.teams || [];
+        const current = r && teams.find(t => t.id === r.team_id);
+        if (box && (!current || current.id !== box.id))
+          await setBeeTeam(bee, box.id, `Moved ${bee} to team ${box.name}.`);
+        else if (!box && current)
+          await setBeeTeam(bee, null, `Removed ${bee} from team ${current.name}.`);
+        return;
+      }
+      if (targetBee) await assign(id, targetBee);
+      else if (box) await assignTeam(id, box);
     };
     const pointerCancel = () => { press = null; clearDrop(); };
     const move = (e) => {
@@ -1027,7 +1338,10 @@ function HiveView({ state, refresh }) {
       e.dataTransfer.dropEffect = "move";
       dragTaskRef.current = id;
       dropTargetRef.current = hit(e);
-      canvas.style.cursor = dropTargetRef.current ? "copy" : "not-allowed";
+      const box = dropTargetRef.current ? null : hitTeam(e);
+      dropTeamRef.current = box ? box.id : null;
+      canvas.style.cursor =
+        dropTargetRef.current || dropTeamRef.current != null ? "copy" : "not-allowed";
       if (reduced) draw(performance.now(), true);
     };
     const dragLeave = (e) => {
@@ -1036,10 +1350,12 @@ function HiveView({ state, refresh }) {
     const drop = async (e) => {
       const id = taskId(e);
       const assignee = hit(e);
+      const box = hitTeam(e);
       e.preventDefault();
       clearDrop();
-      if (id === null || !assignee) return;
-      await assign(id, assignee);
+      if (id === null) return;
+      if (assignee) await assign(id, assignee);
+      else if (box) await assignTeam(id, box);
     };
     canvas.addEventListener("mousemove", move); canvas.addEventListener("mouseleave", leave);
     canvas.addEventListener("click", click);
@@ -1077,7 +1393,7 @@ function HiveView({ state, refresh }) {
   }, [state]);
 
   return html`<div class="hive-panel"><canvas ref=${canvasRef} tabindex="0"
-    aria-label="Live activity. Drag a comb cell or a task card onto a live agent bee to assign the task; use the task assignee select as a keyboard or touch alternative."></canvas>
+    aria-label="Live activity. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
     <span class="sr-only" aria-live="polite">${dropStatus}</span></div>`;
 }
 

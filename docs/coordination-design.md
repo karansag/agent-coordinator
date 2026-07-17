@@ -9,6 +9,13 @@ this document (repo_runs, leases, actor enforcement, claims,
 task_events) is DEFERRED until real usage shows it is needed. Rounds
 1-4 below are kept as the map for that future, not as a build plan.
 
+Update 2026-07-17: the owner found one global queen less useful than a
+queen per team, so teams landed: persisted agent groups with one queen
+each, built by dragging on the dashboard. Tasks can target a team (the
+queen parcels them out) and record `depends_on` edges shown as a graph.
+The queen remains prompt-driven with no special server authority; the
+rest of the deferred machinery stays deferred.
+
 Participants: badger (codex), hedgehog (claude), owner. Badger
 proposed a baseline (repo-runs, child tasks, server-provisioned
 worktrees, durable event threads, advisory claims, a leased "queen"
