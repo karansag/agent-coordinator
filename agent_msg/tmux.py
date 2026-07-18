@@ -266,7 +266,7 @@ HARNESS_SPAWN: dict[str, HarnessSpec] = {
     "codex": HarnessSpec(
         "codex",
         "--model",
-        ["gpt-5-codex", "gpt-5"],
+        ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
         startup_args="-c check_for_update_on_startup=false",
         auto_args="--ask-for-approval never --sandbox workspace-write",
     ),
@@ -302,6 +302,16 @@ LIVE_MODEL_SWITCH_MODE = {
 }
 _MODEL_REFERENCE = re.compile(r"[A-Za-z0-9_.:/~-]+")
 
+# Values emitted by Codex v0.144.5's native /model picker.  The displayed
+# “Extra high” label maps to the config/runtime value ``xhigh``.
+CODEX_LIVE_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
+CODEX_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
+CODEX_DEFAULT_REASONING_EFFORT = {
+    "gpt-5.6-sol": "low",
+    "gpt-5.6-terra": "medium",
+    "gpt-5.6-luna": "medium",
+}
+
 
 def spawn_options() -> list[dict]:
     """The harness/model menu the dashboard offers, as plain data."""
@@ -313,14 +323,21 @@ def spawn_options() -> list[dict]:
 
 def live_model_options() -> list[dict]:
     """Return dashboard options for model switching in running harnesses."""
-    return [
-        {
+    options = []
+    for flavor, spec in HARNESS_SPAWN.items():
+        item = {
             "flavor": flavor,
             "models": spec.models,
             "mode": LIVE_MODEL_SWITCH_MODE[flavor],
         }
-        for flavor, spec in HARNESS_SPAWN.items()
-    ]
+        if flavor == "codex":
+            item.update(
+                models=list(CODEX_LIVE_MODELS),
+                efforts=list(CODEX_REASONING_EFFORTS),
+                default_efforts=CODEX_DEFAULT_REASONING_EFFORT,
+            )
+        options.append(item)
+    return options
 
 
 def live_model_command(flavor: str | None, model: str | None) -> str | None:
@@ -344,6 +361,62 @@ def live_model_command(flavor: str | None, model: str | None) -> str | None:
     if model in spec.models:
         return f"/model {model}"
     return None
+
+
+def _send_keys(pane: str, *keys: str) -> tuple[bool, str | None]:
+    """Send non-literal tmux keys to an already-open interactive control."""
+    try:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", pane, *keys],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+    except subprocess.CalledProcessError as e:
+        return False, e.stderr.strip() or str(e)
+    except (subprocess.SubprocessError, FileNotFoundError) as e:
+        return False, str(e)
+    return True, None
+
+
+def select_codex_model(
+    pane: str, model: str, effort: str, submit_key: str = "Enter"
+) -> tuple[bool, str | None]:
+    """Drive Codex's native /model picker to a known model and effort.
+
+    Codex does not support ``/model <model>``: that string becomes a normal
+    prompt.  Its picker has a stable, ordered model page followed by an effort
+    page. Home makes selection independent of the currently active model.
+    """
+    if model not in CODEX_LIVE_MODELS or effort not in CODEX_REASONING_EFFORTS:
+        return False, "unsupported Codex model or reasoning effort"
+    ok, err = deliver(pane, "/model", submit_key=submit_key, flavor="codex")
+    if not ok:
+        return False, err
+    # deliver() waits for Codex's submit verification; allow its picker to
+    # render before navigating it.
+    time.sleep(0.2)
+    ok, err = _send_keys(
+        pane, "Home", *("Down" for _ in range(CODEX_LIVE_MODELS.index(model))), "Enter"
+    )
+    if not ok:
+        return False, err
+    # Codex renders the next picker asynchronously.  Keep this separate from
+    # the keystroke sequence: otherwise an immediate Down can land before the
+    # advanced menu exists and its default (Max) is accepted instead.
+    time.sleep(0.5)
+    if effort in ("max", "ultra"):
+        ok, err = _send_keys(pane, "End", "Enter")
+        if not ok:
+            return False, err
+        time.sleep(0.5)
+        return _send_keys(
+            pane, "Home", *("Down" for _ in range(("max", "ultra").index(effort))), "Enter"
+        )
+    return _send_keys(
+        pane, "Home", *("Down" for _ in range(CODEX_REASONING_EFFORTS.index(effort))), "Enter"
+    )
 
 
 def spawn_launch_command(

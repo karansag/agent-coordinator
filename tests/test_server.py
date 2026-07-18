@@ -532,6 +532,31 @@ def test_live_model_switch_opens_codex_picker_without_telemetry_guess(client):
     assert next(r for r in recipients if r["user_id"] == user)["model"] == "gpt-5-codex"
 
 
+def test_live_model_switch_selects_codex_model_and_effort(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        tmux, "select_codex_model",
+        lambda pane, model, effort, submit_key="Enter": calls.append((pane, model, effort, submit_key)) or (True, None),
+    )
+    user = client.post(
+        "/register", json={"tmux_pane": "0:1.0", "flavor": "codex", "model": "gpt-5-codex"}
+    ).json()["user_id"]
+    r = client.post(f"/agents/{user}/model", json={"model": "gpt-5.6-luna", "effort": "ultra"})
+    assert r.status_code == 200
+    assert r.json()["effort"] == "ultra"
+    assert calls == [("0:1.0", "gpt-5.6-luna", "ultra", "Enter")]
+    recipients = client.get("/recipients").json()["recipients"]
+    assert next(r for r in recipients if r["user_id"] == user)["model"] == "gpt-5.6-luna"
+
+
+def test_live_model_switch_requires_both_codex_values(client):
+    user = client.post(
+        "/register", json={"tmux_pane": "0:1.0", "flavor": "codex"}
+    ).json()["user_id"]
+    assert client.post(f"/agents/{user}/model", json={"model": "gpt-5.6-sol"}).status_code == 422
+    assert client.post(f"/agents/{user}/model", json={"effort": "low"}).status_code == 422
+
+
 def test_live_model_switch_rejects_invalid_model_and_stopped_pane(client, monkeypatch):
     user = client.post(
         "/register", json={"tmux_pane": "0:1.0", "flavor": "claude"}
@@ -546,12 +571,15 @@ def test_live_model_options_and_dashboard_control(client):
     assert r.status_code == 200
     options = {h["flavor"]: h for h in r.json()["harnesses"]}
     assert options["codex"]["mode"] == "picker"
+    assert options["codex"]["models"] == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+    assert options["codex"]["efforts"] == ["low", "medium", "high", "xhigh", "max", "ultra"]
 
     portal = portal_source()
     assert "function LiveModelControl" in portal
     assert '"/api/live-model-options"' in portal
     assert "recipient.user_id)}/model" in portal
-    assert "open picker" in portal
+    assert "change Codex" in portal
+    assert "extra high" in portal
 
 
 def test_agent_can_reply_to_owner_without_tmux_delivery(client):

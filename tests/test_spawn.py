@@ -35,8 +35,8 @@ def test_known_model_appends_harness_flag():
         == "claude --model opus"
     )
     assert (
-        tmux.spawn_launch_command("codex", "gpt-5")
-        == f"{CODEX_STARTUP} --model gpt-5 --ask-for-approval never --sandbox workspace-write"
+        tmux.spawn_launch_command("codex", "gpt-5.6-terra")
+        == f"{CODEX_STARTUP} --model gpt-5.6-terra --ask-for-approval never --sandbox workspace-write"
     )
     # hermes uses -m rather than --model.
     tmux.HARNESS_SPAWN["hermes"].models.append("_probe")
@@ -69,6 +69,7 @@ def test_spawn_options_shape():
     opts = {o["flavor"]: o["models"] for o in tmux.spawn_options()}
     assert set(opts) == {"claude", "codex", "pi", "hermes"}
     assert opts["claude"] == ["opus", "sonnet", "haiku"]
+    assert opts["codex"] == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
 
 
 def test_live_model_commands_are_harness_specific():
@@ -78,6 +79,36 @@ def test_live_model_commands_are_harness_specific():
     # Codex's /model opens its picker; arguments are sent as normal prompts.
     assert tmux.live_model_command("codex", None) == "/model"
     assert tmux.live_model_command("codex", "gpt-5") is None
+
+
+def test_codex_live_model_picker_options_use_runtime_ids():
+    options = {o["flavor"]: o for o in tmux.live_model_options()}
+    codex = options["codex"]
+    assert codex["models"] == ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
+    assert codex["efforts"] == ["low", "medium", "high", "xhigh", "max", "ultra"]
+    assert codex["default_efforts"]["gpt-5.6-sol"] == "low"
+
+
+def test_select_codex_model_drives_native_picker(monkeypatch):
+    delivered = []
+    keys = []
+    monkeypatch.setattr(tmux, "deliver", lambda *args, **kwargs: (delivered.append((args, kwargs)) or (True, None)))
+    monkeypatch.setattr(tmux, "_send_keys", lambda pane, *items: (keys.append((pane, items)) or (True, None)))
+    monkeypatch.setattr(tmux.time, "sleep", lambda _: None)
+
+    assert tmux.select_codex_model("0:1.0", "gpt-5.6-luna", "ultra") == (True, None)
+    assert delivered == [(("0:1.0", "/model"), {"submit_key": "Enter", "flavor": "codex"})]
+    assert keys == [
+        ("0:1.0", ("Home", "Down", "Down", "Enter")),
+        ("0:1.0", ("End", "Enter")),
+        ("0:1.0", ("Home", "Down", "Enter")),
+    ]
+
+
+def test_select_codex_model_rejects_unknown_values():
+    assert tmux.select_codex_model("0:1.0", "gpt-5.6", "medium") == (
+        False, "unsupported Codex model or reasoning effort"
+    )
 
 
 def test_live_model_commands_reject_unknown_or_unsafe_values():
