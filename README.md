@@ -212,12 +212,6 @@ tailscale serve --bg --https=8445 http://127.0.0.1:8765
 Then open `https://<machine-name>.<tailnet>.ts.net:8445/` from any
 tailnet device. Remove it with `tailscale serve --https=8445 off`.
 
-Port 8443 is reserved on this host for Diction transcription. It routes to the
-persistent Diction gateway on `http://127.0.0.1:8092`, which forwards to the
-transcription normalizer on `http://127.0.0.1:8091`. Do not point 8443 directly
-at the normalizer or reuse it for the dashboard: the installed Diction app uses
-the gateway's `/v1/audio/stream` WebSocket protocol.
-
 ## Tasks
 
 Tasks live in the same SQLite database. The owner creates and assigns

@@ -3,14 +3,24 @@ name = "agent-msg"
 version = "0.1.0"
 description = "Tiny agent-to-agent message bus (SQLite + tmux delivery)"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Karan Sagar" },
+]
 dependencies = [
     "fastapi>=0.136.1",
     "httpx>=0.28.1",
     "uvicorn[standard]>=0.46.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/karansag/agent-coordinator"
+Repository = "https://github.com/karansag/agent-coordinator"
+Issues = "https://github.com/karansag/agent-coordinator/issues"
+
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
