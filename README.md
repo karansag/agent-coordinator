@@ -143,8 +143,11 @@ The layout has two modes plus a persistent roster:
   cluster inside a labeled outline; the queen bee wears a crown, and
   bees can be dragged into or out of a team outline to change teams.
   Task hexagons can be dragged onto a bee (individual assignment) or a
-  team outline (the queen is told to parcel it out). Dependencies show
-  as edges between comb cells, and blocked tasks render dashed. The
+  team outline (the queen is told to parcel it out). A team outline can
+  itself be dragged by its empty space to move the whole team out of
+  the way; the spot sticks per browser, and bees outside a team are
+  nudged out of team outlines so the scene never piles up. Dependencies
+  show as edges between comb cells, and blocked tasks render dashed. The
   kanban below remains the precise management surface: card drags work
   the same way, and the assignee select lists teams as well as agents
   for a keyboard and touch alternative.

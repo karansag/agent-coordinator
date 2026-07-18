@@ -347,6 +347,11 @@ def test_portal_team_contract(client):
     assert "assign #${dragTaskRef.current} to team ${targetBox.name}" in portal
     assert "move ${dragBeeRef.current} to team ${targetBox.name}" in portal
     assert "depends_on" in portal
+    # Team boxes can be dragged into place (persisted per browser) and
+    # bees outside a team are kept out of team outlines.
+    assert "agent-msg-hive-team-pos" in portal
+    assert "release to place team" in portal
+    assert "bee.r.team_id === box.id" in portal
 
 
 def test_portal_dead_pane_overrides_stale_activity(client):

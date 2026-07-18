@@ -778,6 +778,7 @@ function HiveView({ state, refresh }) {
   const dragPointRef = useRef(null);
   const dropTargetRef = useRef(null);
   const dropTeamRef = useRef(null);
+  const dragBoxRef = useRef(null);
   const teamBoxesRef = useRef([]);
   const drawRef = useRef(null);
   const [dropStatus, setDropStatus] = useState("");
@@ -808,6 +809,22 @@ function HiveView({ state, refresh }) {
     let frame = 0;
     let cssWidth = 0;
     let lastDraw = 0;
+
+    // Owner-placed team box positions, kept across reloads.
+    const POS_KEY = "agent-msg-hive-team-pos";
+    const teamPos = new Map();
+    try {
+      for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem(POS_KEY) || "{}")))
+        if (v && Number.isFinite(v.x) && Number.isFinite(v.y))
+          teamPos.set(Number(k), { x: v.x, y: v.y });
+    } catch { /* start unplaced */ }
+    const savePos = () => {
+      const known = new Set((stateRef.current.teams || []).map(t => t.id));
+      const obj = {};
+      for (const [id, p] of teamPos)
+        if (known.has(id)) obj[id] = { x: Math.round(p.x), y: Math.round(p.y) };
+      try { localStorage.setItem(POS_KEY, JSON.stringify(obj)); } catch { /* session only */ }
+    };
 
     const hex = (x, y, radius, fill, stroke) => {
       ctx.beginPath();
@@ -867,8 +884,36 @@ function HiveView({ state, refresh }) {
       const grouped = [...running].sort((a, b) =>
         (a.team_id && teamById.has(a.team_id) ? a.team_id : 1e9) -
         (b.team_id && teamById.has(b.team_id) ? b.team_id : 1e9));
-      const homes = grouped.map((_, i) => {
-        const angle = Math.PI + (i / Math.max(1, grouped.length)) * Math.PI * 2;
+      // A team the owner has dragged into place anchors its bees in a
+      // compact grid there; everyone else flies the shared ellipse.
+      const positioned = new Set([...teamPos.keys()].filter(id => teamById.has(id)));
+      const posOf = (id) => {
+        const p = teamPos.get(id);
+        return { x: Math.max(56, Math.min(width - 56, p.x)),
+          y: Math.max(58, Math.min(202, p.y)) };
+      };
+      const clusterCount = new Map();
+      for (const r of grouped)
+        if (r.team_id && positioned.has(r.team_id))
+          clusterCount.set(r.team_id, (clusterCount.get(r.team_id) || 0) + 1);
+      const looseList = grouped.filter(r => !(r.team_id && positioned.has(r.team_id)));
+      const looseIndex = new Map(looseList.map((r, i) => [r.user_id, i]));
+      const clusterSeen = new Map();
+      const homes = grouped.map(r => {
+        if (r.team_id && positioned.has(r.team_id)) {
+          const pos = posOf(r.team_id);
+          const count = clusterCount.get(r.team_id);
+          const j = clusterSeen.get(r.team_id) || 0;
+          clusterSeen.set(r.team_id, j + 1);
+          const cols = Math.min(3, count);
+          const rows = Math.ceil(count / cols);
+          const row = Math.floor(j / cols);
+          const inRow = row === rows - 1 ? count - row * cols : cols;
+          return { x: pos.x + ((j % cols) - (inRow - 1) / 2) * 58,
+            y: pos.y + (row - (rows - 1) / 2) * 46 };
+        }
+        const i = looseIndex.get(r.user_id);
+        const angle = Math.PI + (i / Math.max(1, looseList.length)) * Math.PI * 2;
         return { x: center.x + Math.cos(angle) * Math.min(width * .36, 330),
           y: 132 + Math.sin(angle) * 67 };
       });
@@ -886,10 +931,13 @@ function HiveView({ state, refresh }) {
         let emptyX = 12;
         for (const t of teamsList) {
           const b = bounds.get(t.id);
+          const pos = positioned.has(t.id) ? posOf(t.id) : null;
           const box = b
             ? { x: b.minX - 44, y: b.minY - 40, w: b.maxX - b.minX + 88, h: b.maxY - b.minY + 90 }
-            : { x: emptyX, y: 28, w: 94, h: 44 };
-          if (!b) emptyX += 104;
+            : pos
+              ? { x: pos.x - 47, y: pos.y - 22, w: 94, h: 44 }
+              : { x: emptyX, y: 28, w: 94, h: 44 };
+          if (!b && !pos) emptyX += 104;
           box.x = Math.max(4, box.x); box.y = Math.max(24, box.y);
           box.w = Math.min(box.w, width - box.x - 4);
           box.h = Math.min(box.h, 254 - box.y);
@@ -898,13 +946,14 @@ function HiveView({ state, refresh }) {
         const draggingSomething = dragTaskRef.current !== null || dragBeeRef.current;
         for (const box of teamBoxesRef.current) {
           const over = draggingSomething && dropTeamRef.current === box.id;
+          const moving = dragBoxRef.current === box.id;
           ctx.save();
-          ctx.strokeStyle = teamColor(box.name, over ? .95 : .4);
-          ctx.lineWidth = over ? 2 : 1;
-          ctx.setLineDash(over ? [] : [5, 4]);
+          ctx.strokeStyle = teamColor(box.name, over || moving ? .95 : .4);
+          ctx.lineWidth = over || moving ? 2 : 1;
+          ctx.setLineDash(over || moving ? [] : [5, 4]);
           ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 12); ctx.stroke();
-          if (over) {
-            ctx.fillStyle = teamColor(box.name, .08);
+          if (over || moving) {
+            ctx.fillStyle = teamColor(box.name, over ? .08 : .05);
             ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 12); ctx.fill();
           }
           ctx.restore();
@@ -925,7 +974,7 @@ function HiveView({ state, refresh }) {
       const rows = Math.ceil(visible.length / cols);
       const cellX = 38, cellY = 34;
       taskCellsRef.current = [];
-      if (dragTaskRef.current === null && !dragBeeRef.current) {
+      if (dragTaskRef.current === null && !dragBeeRef.current && dragBoxRef.current === null) {
         ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(`task comb · ${waiting.length} waiting · ${carriedCount} carried`, center.x, 17);
@@ -977,11 +1026,9 @@ function HiveView({ state, refresh }) {
       ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       ctx.fillText("owner", ownerNode.x, 253);
 
-      grouped.forEach((r, i) => {
+      const beeData = grouped.map((r, i) => {
         const name = r.user_id;
         const seed = hue(name);
-        const homeX = homes[i].x;
-        const homeY = homes[i].y;
         const mine = (data.tasks || []).filter(t => t.assignee === name && t.status !== "done")
           .sort((a, b) => (a.status === "picked_up" ? -1 : 1) - (b.status === "picked_up" ? -1 : 1)
             || b.updated_at - a.updated_at);
@@ -993,12 +1040,37 @@ function HiveView({ state, refresh }) {
         const working = r.activity && r.activity.status === "working";
         const busy = !!picked || working;
         const speed = busy ? 2.5 : 1;
-        const amp = busy ? 26 : 18;
+        const clustered = r.team_id && positioned.has(r.team_id);
+        const amp = (busy ? 26 : 18) * (clustered ? .55 : 1);
         const q = still ? 0 : now / 8000 * Math.PI * 2 * speed + phase;
-        const x = homeX + (still ? 0 : Math.sin(q) * amp);
-        const y = homeY + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
+        const x = homes[i].x + (still ? 0 : Math.sin(q) * amp);
+        const y = homes[i].y + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
         const dx = still ? 1 : Math.cos(q);
         const dy = still ? 0 : Math.cos(q * 1.7 + phase) * .94;
+        return { r, name, seed, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy };
+      });
+      // Boundary collision: a bee never sits inside a team box it doesn't
+      // belong to — it gets nudged out through the nearest edge.
+      for (const bee of beeData) {
+        for (const box of teamBoxesRef.current) {
+          if (bee.r.team_id === box.id) continue;
+          const m = 14;
+          if (bee.x <= box.x - m || bee.x >= box.x + box.w + m ||
+              bee.y <= box.y - m || bee.y >= box.y + box.h + m) continue;
+          const edges = [
+            { d: bee.x - (box.x - m), x: box.x - m, y: bee.y },
+            { d: box.x + box.w + m - bee.x, x: box.x + box.w + m, y: bee.y },
+            { d: bee.y - (box.y - m), x: bee.x, y: box.y - m },
+            { d: box.y + box.h + m - bee.y, x: bee.x, y: box.y + box.h + m },
+          ];
+          const out = edges.reduce((a, b) => (a.d <= b.d ? a : b));
+          bee.x = out.x; bee.y = out.y;
+        }
+        bee.x = Math.max(16, Math.min(width - 16, bee.x));
+        bee.y = Math.max(34, Math.min(244, bee.y));
+      }
+      for (const bee of beeData) {
+        const { r, name, seed, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy } = bee;
         bees.set(name, { x, y, task: primary });
         if (assigned) token(assigned, x + 22, y + Math.sin(q * .8) * 3);
 
@@ -1041,7 +1113,7 @@ function HiveView({ state, refresh }) {
           ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
           ctx.fillText("♛", x, y - (attention ? 26 : 14));
         }
-      });
+      }
 
       if (dragTaskRef.current !== null && dragPointRef.current) {
         const dragged = (data.tasks || []).find(t => t.id === dragTaskRef.current);
@@ -1100,6 +1172,9 @@ function HiveView({ state, refresh }) {
         banner(home
           ? `release to take ${dragBeeRef.current} out of team ${home.name}`
           : `drop ${dragBeeRef.current} on a team`);
+      } else if (dragBoxRef.current !== null) {
+        const moving = teamBoxesRef.current.find(b => b.id === dragBoxRef.current);
+        if (moving) banner(`release to place team ${moving.name}`);
       }
 
       const endpoint = (name) => name === "owner" ? ownerNode : (bees.get(name) || ownerNode);
@@ -1198,8 +1273,22 @@ function HiveView({ state, refresh }) {
       dragPointRef.current = null;
       dropTargetRef.current = null;
       dropTeamRef.current = null;
+      dragBoxRef.current = null;
       canvas.style.cursor = "default";
       if (reduced) draw(performance.now(), true);
+    };
+    const teamCenter = (id) => {
+      const stored = teamPos.get(id);
+      if (stored) return stored;
+      const members = (stateRef.current.recipients || [])
+        .filter(r => r.team_id === id && r.pane_alive)
+        .map(r => beesRef.current.get(r.user_id)).filter(Boolean);
+      if (members.length) return {
+        x: members.reduce((s, b) => s + b.x, 0) / members.length,
+        y: members.reduce((s, b) => s + b.y, 0) / members.length,
+      };
+      const box = teamBoxesRef.current.find(b => b.id === id);
+      return box ? { x: box.x + box.w / 2, y: box.y + box.h / 2 } : null;
     };
     const assign = async (id, assignee) => {
       const task = (stateRef.current.tasks || []).find(t => t.id === id);
@@ -1266,8 +1355,16 @@ function HiveView({ state, refresh }) {
         return;
       }
       const cell = hitTask(e);
-      if (!cell) return;
-      press = { id: cell.task.id, start: at(e), moved: false };
+      if (cell) {
+        press = { id: cell.task.id, start: at(e), moved: false };
+        canvas.setPointerCapture(e.pointerId);
+        return;
+      }
+      const box = hitTeam(e);
+      if (!box) return;
+      const p = at(e);
+      const c = teamCenter(box.id) || { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+      press = { boxId: box.id, start: p, off: { x: c.x - p.x, y: c.y - p.y }, moved: false };
       canvas.setPointerCapture(e.pointerId);
     };
     const pointerMove = (e) => {
@@ -1276,6 +1373,13 @@ function HiveView({ state, refresh }) {
       if (!press.moved && Math.hypot(p.x - press.start.x, p.y - press.start.y) < 5) return;
       press.moved = true;
       hoverRef.current = null; taskHoverRef.current = null;
+      if (press.boxId != null) {
+        dragBoxRef.current = press.boxId;
+        teamPos.set(press.boxId, { x: p.x + press.off.x, y: p.y + press.off.y });
+        canvas.style.cursor = "grabbing";
+        if (reduced) draw(performance.now(), true);
+        return;
+      }
       dragPointRef.current = p;
       if (press.bee) {
         dragBeeRef.current = press.bee;
@@ -1294,10 +1398,15 @@ function HiveView({ state, refresh }) {
     };
     const pointerUp = async (e) => {
       if (!press) return;
-      const { id, bee, moved } = press;
+      const { id, bee, boxId, moved } = press;
       press = null;
       if (!moved) return;
       suppressClick = true;
+      if (boxId != null) {
+        savePos();
+        clearDrop();
+        return;
+      }
       const targetBee = hit(e);
       const box = hitTeam(e);
       clearDrop();
@@ -1318,7 +1427,9 @@ function HiveView({ state, refresh }) {
     const move = (e) => {
       if (press) return;
       hoverRef.current = hit(e); taskHoverRef.current = hoverRef.current ? null : hitTask(e);
-      canvas.style.cursor = hoverRef.current ? "pointer" : taskHoverRef.current ? "grab" : "default";
+      const overBox = !hoverRef.current && !taskHoverRef.current && hitTeam(e);
+      canvas.style.cursor = hoverRef.current ? "pointer"
+        : taskHoverRef.current || overBox ? "grab" : "default";
       if (reduced) draw(performance.now(), true);
     };
     const leave = () => {
@@ -1357,6 +1468,7 @@ function HiveView({ state, refresh }) {
       if (assignee) await assign(id, assignee);
       else if (box) await assignTeam(id, box);
     };
+    window.__hive = { bees: () => beesRef.current, teamBoxes: () => teamBoxesRef.current };
     canvas.addEventListener("mousemove", move); canvas.addEventListener("mouseleave", leave);
     canvas.addEventListener("click", click);
     canvas.addEventListener("pointerdown", pointerDown);
@@ -1375,7 +1487,7 @@ function HiveView({ state, refresh }) {
       frame = requestAnimationFrame(tick);
     }
     return () => {
-      cancelAnimationFrame(frame); drawRef.current = null;
+      cancelAnimationFrame(frame); drawRef.current = null; delete window.__hive;
       canvas.removeEventListener("mousemove", move); canvas.removeEventListener("mouseleave", leave);
       canvas.removeEventListener("click", click);
       canvas.removeEventListener("pointerdown", pointerDown);
@@ -1393,7 +1505,7 @@ function HiveView({ state, refresh }) {
   }, [state]);
 
   return html`<div class="hive-panel"><canvas ref=${canvasRef} tabindex="0"
-    aria-label="Live activity. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
+    aria-label="Live activity. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team; drag a team outline by its empty space to move the whole team somewhere else. Bees outside a team are kept out of team outlines. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
     <span class="sr-only" aria-live="polite">${dropStatus}</span></div>`;
 }
 
