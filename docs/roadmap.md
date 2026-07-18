@@ -27,12 +27,10 @@ Codex, or otherwise). Last updated 2026-07-13.
   constructions, minimal emdashes, plain functional naming ("agent
   dashboard", "agents"), no whimsical section names, no KPI stat-tile
   strips.
-- The dashboard (`agent_msg/portal.html`) is a Preact app with the
-  preact+htm standalone bundle (13 KB, global `htmPreact`) vendored
-  inline. To rewrite it wholesale, put `/*__VENDOR__*/` in the first
-  script tag and splice the bundle from
-  unpkg.com/htm@3.1.1/preact/standalone.umd.js over the placeholder.
-  Keep lists keyed; no manual DOM manipulation.
+- The dashboard's authored Preact/HTM modules and CSS live under `web/`.
+  Run `npm ci` and `npm run build` after editing them, and commit the generated
+  `agent_msg/portal.html` and `agent_msg/static/` assets so the Python runtime
+  does not need Node. Keep lists keyed; no manual DOM manipulation.
 - Verify changes end to end against a scratch server
   (`AGENT_MSG_DB=/tmp/x.sqlite AGENT_MSG_PORT=8799`), never against
   the production server on 8765 (real DB at ~/.agent-msg/db.sqlite).

@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Frontend dependencies
+node_modules/
+
 # Test/runtime artifacts
 .pytest_cache/
 *.sqlite

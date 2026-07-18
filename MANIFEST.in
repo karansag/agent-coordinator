@@ -1,0 +1,2 @@
+include package.json package-lock.json vite.config.js
+recursive-include web *.css *.html *.js

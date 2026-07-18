@@ -3,10 +3,22 @@
 Delivery is monkeypatched to avoid touching real tmux.
 """
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from agent_msg import server, tmux
+
+
+WEB_ROOT = Path(__file__).parents[1] / "web"
+
+
+def portal_source():
+    """Return authored dashboard sources, not Vite's generated bundle."""
+
+    paths = [WEB_ROOT / "styles.css", *sorted((WEB_ROOT / "src").glob("*.js"))]
+    return "\n".join(path.read_text() for path in paths)
 
 
 @pytest.fixture()
@@ -311,11 +323,18 @@ def test_portal_page_served_at_root(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert "agent dashboard" in r.text
-    assert "/api/state" in r.text
+    assert '/static/portal.js' in r.text
+    assert '/static/portal.css' in r.text
+    assert client.get("/static/portal.js").headers["content-type"].startswith(
+        "text/javascript"
+    )
+    assert client.get("/static/portal.css").headers["content-type"].startswith(
+        "text/css"
+    )
 
 
 def test_portal_task_drag_drop_contract(client):
-    portal = client.get("/").text
+    portal = portal_source()
     assert 'const draggable = t.status !== "done";' in portal
     assert "draggable=${draggable}" in portal
     assert 'Math.hypot(p.x - b.x, p.y - b.y) < 24' in portal
@@ -325,7 +344,7 @@ def test_portal_task_drag_drop_contract(client):
 
 
 def test_portal_task_honeycomb_contract(client):
-    portal = client.get("/").text
+    portal = portal_source()
     assert "task comb · ${waiting.length} waiting · ${carriedCount} carried" in portal
     assert "taskCellsRef.current.push" in portal
     assert "extras.slice(0, 4).forEach" in portal
@@ -335,7 +354,7 @@ def test_portal_task_honeycomb_contract(client):
 
 
 def test_portal_team_contract(client):
-    portal = client.get("/").text
+    portal = portal_source()
     # Teams are managed from the sidebar (create, drag membership, crown a
     # queen) and mirrored in the hive canvas as labeled outlines.
     assert "function TeamBox" in portal
@@ -355,7 +374,7 @@ def test_portal_team_contract(client):
 
 
 def test_portal_dead_pane_overrides_stale_activity(client):
-    portal = client.get("/").text
+    portal = portal_source()
     assert 'if (!r.pane_alive) return "stopped";' in portal
     assert "chip-card state-${st.cls}" in portal
     assert ".chip-card.state-working" in portal

@@ -176,11 +176,12 @@ grace are set by `AGENT_MSG_MONITOR_INTERVAL` (default 5s) and
 Agents reply to the human with `agent-msg send --to owner`; those
 messages appear only on the dashboard.
 
-The portal is a single self-contained HTML page served by the same
-FastAPI process, polling `/api/state` and `/api/peek/<handle>`. The UI
-is built with Preact (vendored inline, about 13&nbsp;KB), so renders are
-diffed instead of rebuilt. There is no build step and no external
-requests.
+The portal is built from the JavaScript modules and stylesheet under `web/`
+with Vite and local Preact/HTM packages. The generated `agent_msg/portal.html`
+and `agent_msg/static/` assets are committed and included in the Python
+package, so production needs only the normal Python runtime and makes no
+external browser requests. The app polls `/api/state` and
+`/api/peek/<handle>`.
 
 ### Remote access over Tailscale
 
@@ -425,9 +426,14 @@ agent_msg/
   client.py   CLI
   db.py       SQLite layer
   names.py    server-assigned handle pool
-  portal.html agent dashboard (self-contained page served at /)
+  portal.html generated dashboard entry page served at /
+  static/     generated dashboard JavaScript and CSS
   server.py   FastAPI app, protocol brief, and portal endpoints
   tmux.py     pane detection, delivery, capture, and message formatting
+web/
+  portal.html Vite entry page
+  styles.css  dashboard styles
+  src/        authored dashboard JavaScript modules
 skills/
   codex/agent-msg-register/
   claude/agent-msg-register/
@@ -443,6 +449,14 @@ uv run pytest -q
 
 Delivery is monkeypatched in tests, so the suite does not type into real
 tmux panes.
+
+When changing files under `web/`, install the pinned frontend dependencies and
+rebuild the committed package assets:
+
+```bash
+npm ci
+npm run build
+```
 
 ## Security Model
 

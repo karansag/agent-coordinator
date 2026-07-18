@@ -14,6 +14,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import activity, db, names, tmux
@@ -26,6 +27,7 @@ UNKNOWN_ACTIVITY = {"status": "unknown", "detail": None, "since": None}
 
 DB_PATH = Path(os.environ.get("AGENT_MSG_DB", "~/.agent-msg/db.sqlite")).expanduser()
 PORTAL_PATH = Path(__file__).parent / "portal.html"
+PORTAL_STATIC_PATH = Path(__file__).parent / "static"
 
 # Reserved handle for the human operator. Never assigned to an agent
 # (the name pool contains only animals). Messages sent to it are recorded
@@ -281,6 +283,11 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
                     await task
 
     app = FastAPI(title="agent-msg", version="0.1.0", lifespan=lifespan)
+    app.mount(
+        "/static",
+        StaticFiles(directory=PORTAL_STATIC_PATH),
+        name="portal-static",
+    )
     # Same dict the monitor loop mutates; exposed so tests can seed it.
     app.state.activity_registry = registry
 

@@ -18,7 +18,7 @@ include = ["agent_msg*"]
 exclude = ["skills*", "tests*", "docs*"]
 
 [tool.setuptools.package-data]
-agent_msg = ["portal.html"]
+agent_msg = ["portal.html", "static/*.css", "static/*.js"]
 
 [project.scripts]
 agent-msg = "agent_msg.client:main"
