@@ -312,7 +312,10 @@
   }
   .thread > .bar .swap { color: var(--honey); font-family: var(--mono); font-size: 12px; }
   .thread > .bar .n { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--cream-dim); letter-spacing: .1em; }
-  .msgs { padding: 12px 14px; display: grid; gap: 9px; max-height: 340px; overflow: auto; }
+  /* Fixed default height, draggable so the owner can make a conversation
+     bigger or smaller (browser writes an inline height that survives
+     re-renders since .msgs has no managed style prop). */
+  .msgs { padding: 12px 14px; display: grid; gap: 9px; align-content: start; height: 340px; min-height: 120px; max-height: 85vh; overflow: auto; resize: vertical; }
   .msg { max-width: 88%; justify-self: start; }
   .msg.right { justify-self: end; }
   .msg .bubble {
