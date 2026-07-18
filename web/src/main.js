@@ -115,25 +115,49 @@ function RosterChip({ r, state, team, selected, unread, ping, refresh }) {
   </div>`;
 }
 
+const DEFAULT_MODEL = "default";
+
 function SpawnControl({ refresh }) {
+  const [harnesses, setHarnesses] = useState([]);
   const [flavor, setFlavor] = useState("claude");
+  const [model, setModel] = useState(DEFAULT_MODEL);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    fetch("/api/spawn-options")
+      .then(r => r.json())
+      .then(d => { if (live && d.harnesses) setHarnesses(d.harnesses); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  const models = (harnesses.find(h => h.flavor === flavor) || {}).models || [];
+  const pickFlavor = (f) => { setFlavor(f); setModel(DEFAULT_MODEL); };
+
   const spawn = async (e) => {
     e.preventDefault();
     setBusy(true);
     setErr("");
+    const body = { flavor, model: model === DEFAULT_MODEL ? null : model };
     const r = await fetch("/agents/spawn", {
-      method: "POST", headers: JSONH, body: JSON.stringify({ flavor }),
+      method: "POST", headers: JSONH, body: JSON.stringify(body),
     });
     if (!r.ok) setErr("spawn failed");
     setBusy(false);
     refresh();
   };
+
+  const flavors = harnesses.length ? harnesses.map(h => h.flavor) : [flavor];
   return html`<form class="spawn" onSubmit=${spawn}>
-    <select value=${flavor} onChange=${e => setFlavor(e.target.value)}>
-      ${["claude", "codex", "generic"].map(f =>
-        html`<option key=${f} value=${f}>${f}</option>`)}
+    <select title="harness" value=${flavor} onChange=${e => pickFlavor(e.target.value)}>
+      ${flavors.map(f => html`<option key=${f} value=${f}>${f}</option>`)}
+    </select>
+    <select title="model" value=${model} onChange=${e => setModel(e.target.value)}
+      disabled=${models.length === 0}>
+      <option value=${DEFAULT_MODEL}>default model</option>
+      ${models.map(m => html`<option key=${m} value=${m}>${m}</option>`)}
     </select>
     <button class="act" type="submit" disabled=${busy}>${busy ? "spawning…" : "spawn agent"}</button>
     ${err && html`<span style="color:var(--alert); font-size:11px">${err}</span>`}

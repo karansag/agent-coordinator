@@ -176,8 +176,10 @@
   details.stopped summary::before { content: "▸ "; }
   details.stopped[open] summary::before { content: "▾ "; }
   details.stopped .chip-card { opacity: .5; }
-  form.spawn { display: flex; gap: 8px; align-items: center; margin-top: 20px; }
-  form.spawn select { flex: 1; min-width: 0; }
+  form.spawn { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 20px; }
+  form.spawn select { flex: 1 1 40%; min-width: 0; }
+  form.spawn .act { flex: 1 1 100%; }
+  form.spawn select:disabled { opacity: .5; }
 
   .empty {
     border: 1px dashed var(--line); border-radius: 10px; padding: 34px; text-align: center;

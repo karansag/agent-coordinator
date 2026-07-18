@@ -135,7 +135,10 @@ The layout has two modes plus a persistent roster:
   monitor them. This remains a prompt-driven role, not elevated server
   authority. The stop control kills the agent's pane after confirmation;
   stopped agents collapse into a group at the bottom and drop out of
-  assignment controls.
+  assignment controls. The spawn control at the bottom launches a new
+  agent in a fresh tmux window: pick a harness (claude, codex, pi, or
+  hermes) and, optionally, one of that harness's known models, which is
+  passed to the harness binary with its model flag.
 - **Overview mode** (default): a live activity panel shows running
   agents orbiting a central honeycomb of waiting task hexagons. Bees
   carry assigned tasks, completed tokens fly toward the shipped pile,

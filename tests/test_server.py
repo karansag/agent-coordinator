@@ -578,14 +578,47 @@ def test_spawn_creates_window_and_registers_agent(client):
     assert client._window_names[-1] == ("agents:1.0", body["user_id"])
 
 
-def test_spawn_generic_launches_no_command(client):
-    r = client.post("/agents/spawn", json={"flavor": "generic"})
+def test_spawn_pi_launches_pi_binary(client):
+    r = client.post("/agents/spawn", json={"flavor": "pi"})
     assert r.status_code == 200
-    assert client._spawns[-1] == (tmux.AGENTS_SESSION, None)
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "pi")
+    assert r.json()["model"] is None
 
 
-def test_spawn_rejects_unknown_flavor(client):
+def test_spawn_with_model_passes_cli_flag_and_records_model(client):
+    r = client.post("/agents/spawn", json={"flavor": "claude", "model": "opus"})
+    assert r.status_code == 200
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude --model opus")
+    body = r.json()
+    assert body["model"] == "opus"
+    spawned = next(
+        x for x in client.get("/recipients").json()["recipients"]
+        if x["user_id"] == body["user_id"]
+    )
+    assert spawned["model"] == "opus"
+
+
+def test_spawn_ignores_unknown_model(client):
+    r = client.post("/agents/spawn", json={"flavor": "claude", "model": "totally-made-up"})
+    assert r.status_code == 200
+    # Falls back to the bare binary; nothing bogus is recorded or launched.
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude")
+    assert r.json()["model"] is None
+
+
+def test_spawn_rejects_unknown_and_unspawnable_flavors(client):
     assert client.post("/agents/spawn", json={"flavor": "skynet"}).status_code == 422
+    # generic is no longer spawnable (a bare shell is not a working agent).
+    assert client.post("/agents/spawn", json={"flavor": "generic"}).status_code == 422
+
+
+def test_spawn_options_lists_harnesses_and_models(client):
+    r = client.get("/api/spawn-options")
+    assert r.status_code == 200
+    harnesses = {h["flavor"]: h["models"] for h in r.json()["harnesses"]}
+    assert set(harnesses) == {"claude", "codex", "pi", "hermes"}
+    assert "opus" in harnesses["claude"]
+    assert harnesses["hermes"] == []
 
 
 def test_stop_kills_live_agent_pane(client):

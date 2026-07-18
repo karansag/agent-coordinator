@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import time
 
@@ -228,13 +229,56 @@ def deliver(
 
 AGENTS_SESSION = "agents"
 
-# What to launch in a freshly spawned pane, per flavor. None means leave
-# the shell as is (a generic terminal agent target).
-FLAVOR_LAUNCH_COMMANDS: dict[str, str | None] = {
-    "claude": "claude",
-    "codex": "codex",
-    "generic": None,
+# Harnesses the dashboard can spawn. Each has a launch binary, the CLI flag
+# that selects a model, and a curated set of known models offered in the UI.
+# "generic" is intentionally not spawnable: launching a bare shell produces a
+# registered pane with no agent in it, which is not a working target.
+class HarnessSpec:
+    def __init__(self, binary: str, model_flag: str, models: list[str]):
+        self.binary = binary
+        self.model_flag = model_flag
+        self.models = models
+
+
+HARNESS_SPAWN: dict[str, HarnessSpec] = {
+    "claude": HarnessSpec("claude", "--model", ["opus", "sonnet", "haiku"]),
+    "codex": HarnessSpec("codex", "--model", ["gpt-5-codex", "gpt-5"]),
+    "pi": HarnessSpec(
+        "pi",
+        "--model",
+        [
+            "~anthropic/claude-opus-latest",
+            "~anthropic/claude-sonnet-latest",
+            "~openai/gpt-latest",
+        ],
+    ),
+    "hermes": HarnessSpec("hermes", "-m", []),
 }
+
+SPAWNABLE_FLAVORS = tuple(HARNESS_SPAWN)
+
+
+def spawn_options() -> list[dict]:
+    """The harness/model menu the dashboard offers, as plain data."""
+    return [
+        {"flavor": flavor, "models": spec.models}
+        for flavor, spec in HARNESS_SPAWN.items()
+    ]
+
+
+def spawn_launch_command(flavor: str, model: str | None = None) -> str | None:
+    """Build the shell command that launches a harness in a fresh pane.
+
+    Returns None for an unspawnable flavor. A model is only honored when it is
+    one of the harness's known models; it is shell-quoted so patterns like
+    `~anthropic/claude-opus-latest` are passed literally (no tilde expansion).
+    """
+    spec = HARNESS_SPAWN.get(flavor)
+    if spec is None:
+        return None
+    if model and model in spec.models:
+        return f"{spec.binary} {spec.model_flag} {shlex.quote(model)}"
+    return spec.binary
 
 
 def spawn_window(

@@ -107,7 +107,12 @@ class TaskUpdateReq(BaseModel):
 class SpawnReq(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    flavor: Literal["claude", "codex", "generic"] = "generic"
+    flavor: Literal["claude", "codex", "pi", "hermes"] = "claude"
+    model: str | None = Field(
+        default=None,
+        description="Optional harness model. Only honored when it is one of "
+        "the harness's known models; otherwise the harness default is used.",
+    )
 
 
 class TeamCreateReq(BaseModel):
@@ -576,9 +581,16 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
             _notify_team_assignment(task)
         return {"ok": True, "task": task}
 
+    @app.get("/api/spawn-options")
+    def spawn_options():
+        return {"harnesses": tmux.spawn_options()}
+
     @app.post("/agents/spawn")
     def agents_spawn(req: SpawnReq):
-        command = tmux.FLAVOR_LAUNCH_COMMANDS.get(req.flavor)
+        command = tmux.spawn_launch_command(req.flavor, req.model)
+        # Only record the model when it is one that actually launched.
+        spec = tmux.HARNESS_SPAWN.get(req.flavor)
+        model = req.model if (spec and req.model in spec.models) else None
         pane, err = tmux.spawn_window(command=command)
         if pane is None:
             raise HTTPException(
@@ -591,7 +603,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
             user_id,
             pane,
             None,
-            None,
+            model,
             req.flavor,
             None,
             None,
@@ -599,7 +611,10 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
         )
         tmux.set_pane_title(pane, tmux.status_title(user_id, req.flavor))
         tmux.rename_window(pane, user_id)
-        return {"ok": True, "user_id": user_id, "tmux_pane": pane, "flavor": req.flavor}
+        return {
+            "ok": True, "user_id": user_id, "tmux_pane": pane,
+            "flavor": req.flavor, "model": model,
+        }
 
     @app.post("/agents/{user_id}/stop")
     def agents_stop(user_id: str):
