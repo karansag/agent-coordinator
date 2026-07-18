@@ -393,6 +393,26 @@ def test_portal_conversation_history_has_full_width_resize_handle(client):
     assert "resize: none" in portal
 
 
+def test_portal_pins_owner_thread_and_keeps_peer_threads_stable(client):
+    portal = portal_source()
+    # Thread ranks are retained in refs, rather than recomputed from each
+    # thread's most recent timestamp whenever polling replaces state.
+    assert "const threadOrder = useRef(new Map());" in portal
+    assert "const nextThreadOrder = useRef(0);" in portal
+    assert "const ownerThread = pairKey(\"owner\", user);" in portal
+    assert "if (a === ownerThread) return -1;" in portal
+    assert "return threadOrder.current.get(a) - threadOrder.current.get(b);" in portal
+    assert ".map(([, msgs]) => msgs);" in portal
+
+
+def test_portal_roster_unread_is_agent_to_owner_only(client):
+    portal = portal_source()
+    assert 'm.id > since && m.sender === u && m.recipient === "owner"' in portal
+    # Attention still owns the marker independently of unread message state.
+    assert "(unread || attention)" in portal
+    assert 'attention ? "needs attention" : "new messages"' in portal
+
+
 def test_portal_bees_identify_their_harness_by_color_and_glyph(client):
     portal = portal_source()
     assert "export const HARNESSES" in portal

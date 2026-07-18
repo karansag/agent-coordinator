@@ -2194,6 +2194,8 @@ function Thread({ a, b, msgs, freshIds, now, refresh }) {
   </div>`;
 }
 function FocusView({ user, state, refresh, freshIds }) {
+	const threadOrder = A(/* @__PURE__ */ new Map());
+	const nextThreadOrder = A(0);
 	const r = state.recipients.find((x) => x.user_id === user);
 	if (!r) return m$1`<div class="empty">No agent named "${user}".
     <br /><br /><button class="mini" onClick=${() => {
@@ -2213,8 +2215,14 @@ function FocusView({ user, state, refresh, freshIds }) {
 		if (!groups.has(k)) groups.set(k, []);
 		groups.get(k).push(m);
 	}
-	const threads = [...groups.values()].sort((x, y) => y[y.length - 1].ts - x[x.length - 1].ts);
-	const hasOwnerThread = threads.some((msgs) => msgs.some((m) => m.sender === "owner" || m.recipient === "owner"));
+	for (const key of groups.keys()) if (!threadOrder.current.has(key)) threadOrder.current.set(key, nextThreadOrder.current++);
+	const ownerThread = pairKey("owner", user);
+	const threads = [...groups.entries()].sort(([a], [b]) => {
+		if (a === ownerThread) return -1;
+		if (b === ownerThread) return 1;
+		return threadOrder.current.get(a) - threadOrder.current.get(b);
+	}).map(([, msgs]) => msgs);
+	const hasOwnerThread = groups.has(ownerThread);
 	const act = async (id, p) => {
 		await patchTask(id, p);
 		refresh();
@@ -2321,7 +2329,7 @@ function App() {
 	const unreadFor = (u) => {
 		if (!state || u === focusUser) return false;
 		const since = seen.current.byAgent[u] ?? seen.current.maxId;
-		return state.messages.some((m) => m.id > since && (m.sender === u || m.recipient === u));
+		return state.messages.some((m) => m.id > since && m.sender === u && m.recipient === "owner");
 	};
 	const header = m$1`<header class="top">
     <h1 style="cursor:pointer" onClick=${() => {
