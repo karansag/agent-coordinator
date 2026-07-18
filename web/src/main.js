@@ -490,6 +490,8 @@ function MessageComposer({ recipient, refresh, draftId = "thread" }) {
 function Thread({ a, b, msgs, freshIds, now, refresh }) {
   const boxRef = useRef(null);
   const pinned = useRef(true);
+  const resizeRef = useRef(null);
+  const [historyHeight, setHistoryHeight] = useState(null);
   const recipient = a === "owner" ? b : b === "owner" ? a : null;
   useEffect(() => {
     const el = boxRef.current;
@@ -499,10 +501,41 @@ function Thread({ a, b, msgs, freshIds, now, refresh }) {
     const el = e.target;
     pinned.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
   };
+  const resizeBounds = () => ({ min: 120, max: Math.max(120, Math.floor(innerHeight * .85)) });
+  const resizeTo = (height) => {
+    const { min, max } = resizeBounds();
+    setHistoryHeight(Math.max(min, Math.min(max, Math.round(height))));
+  };
+  const resizeStart = (e) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    resizeRef.current = { y: e.clientY, height: boxRef.current.getBoundingClientRect().height };
+  };
+  const resizeMove = (e) => {
+    if (!resizeRef.current) return;
+    resizeTo(resizeRef.current.height + e.clientY - resizeRef.current.y);
+  };
+  const resizeEnd = (e) => {
+    if (!resizeRef.current) return;
+    resizeRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+  const resizeKey = (e) => {
+    const current = historyHeight ?? boxRef.current.getBoundingClientRect().height;
+    const { min, max } = resizeBounds();
+    const next = e.key === "ArrowUp" ? current - 40
+      : e.key === "ArrowDown" ? current + 40
+        : e.key === "Home" ? min
+          : e.key === "End" ? max : null;
+    if (next === null) return;
+    e.preventDefault();
+    resizeTo(next);
+  };
   return html`<div class="thread">
     <div class="bar">${disp(a)} <span class="swap">⇄</span> ${disp(b)}
       <span class="n">${msgs.length} msg${msgs.length === 1 ? "" : "s"}</span></div>
-    <div class="msgs" ref=${boxRef} onScroll=${onScroll}>
+    <div class="msgs" ref=${boxRef} onScroll=${onScroll}
+      style=${historyHeight === null ? null : { height: `${historyHeight}px` }}>
       ${msgs.slice(-40).map(m => html`
         <div key=${m.id} class=${[
             "msg",
@@ -515,6 +548,14 @@ function Thread({ a, b, msgs, freshIds, now, refresh }) {
           <div class="tag">${disp(m.sender)}${m.context && html` · <span class="ctx">${m.context}</span>`} · ${rel(m.ts, now)}${!m.delivered && html` · <span class="ctx">undelivered${m.delivery_error ? `: ${m.delivery_error}` : ""}</span>`}</div>
         </div>`)}
     </div>
+    <button type="button" class="history-resizer" role="separator" aria-orientation="horizontal"
+      aria-label="Resize conversation history"
+      aria-valuemin="120" aria-valuemax=${resizeBounds().max}
+      aria-valuenow=${historyHeight ?? 340} title="Drag to resize conversation history"
+      onPointerDown=${resizeStart} onPointerMove=${resizeMove}
+      onPointerUp=${resizeEnd} onPointerCancel=${resizeEnd} onKeyDown=${resizeKey}>
+      <span>drag to resize history</span>
+    </button>
     ${recipient && html`<${MessageComposer} recipient=${recipient} refresh=${refresh} />`}
   </div>`;
 }

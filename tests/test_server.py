@@ -381,6 +381,18 @@ def test_portal_dead_pane_overrides_stale_activity(client):
     assert ".chip-card.state-attention" in portal
 
 
+def test_portal_conversation_history_has_full_width_resize_handle(client):
+    portal = portal_source()
+    assert 'class="history-resizer"' in portal
+    assert 'aria-label="Resize conversation history"' in portal
+    assert "setPointerCapture" in portal
+    assert 'e.key === "ArrowUp"' in portal
+    assert ".history-resizer {" in portal
+    assert "width: 100%; height: 18px" in portal
+    assert "touch-action: none" in portal
+    assert "resize: none" in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]

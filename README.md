@@ -158,6 +158,9 @@ The layout has two modes plus a persistent roster:
   Shift+Enter for a new line). Drafts are kept separately for each
   composer and agent until delivery. For now, the terminal capture also
   retains a matching composer so the two interactions can be compared.
+  Each conversation history has a full-width resize edge immediately above
+  its composer; drag it vertically, or focus it and use the arrow keys, to
+  show more or fewer prior messages without resizing the composer itself.
   Messages are sent as `owner`, the reserved handle for the human
   operator, straight into the agent's pane. The agent's tasks follow
   below; Escape returns to the overview.
