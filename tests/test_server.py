@@ -505,6 +505,55 @@ def test_owner_send_unknown_recipient_404(client):
     assert r.status_code == 404
 
 
+def test_live_model_switch_delivers_raw_harness_command_and_updates_telemetry(client):
+    user = client.post(
+        "/register", json={"tmux_pane": "0:1.0", "flavor": "claude", "model": "sonnet"}
+    ).json()["user_id"]
+    r = client.post(f"/agents/{user}/model", json={"model": "opus"})
+    assert r.status_code == 200
+    assert r.json()["command"] == "/model opus"
+
+    pane, delivered, prefix, submit_key, flavor = client._calls[-1]
+    assert (pane, delivered, prefix, submit_key, flavor) == (
+        "0:1.0", "/model opus", None, "C-m", "claude"
+    )
+    recipients = client.get("/recipients").json()["recipients"]
+    assert next(r for r in recipients if r["user_id"] == user)["model"] == "opus"
+
+
+def test_live_model_switch_opens_codex_picker_without_telemetry_guess(client):
+    user = client.post(
+        "/register", json={"tmux_pane": "0:1.0", "flavor": "codex", "model": "gpt-5-codex"}
+    ).json()["user_id"]
+    r = client.post(f"/agents/{user}/model", json={"model": None})
+    assert r.status_code == 200
+    assert client._calls[-1] == ("0:1.0", "/model", None, "Enter", "codex")
+    recipients = client.get("/recipients").json()["recipients"]
+    assert next(r for r in recipients if r["user_id"] == user)["model"] == "gpt-5-codex"
+
+
+def test_live_model_switch_rejects_invalid_model_and_stopped_pane(client, monkeypatch):
+    user = client.post(
+        "/register", json={"tmux_pane": "0:1.0", "flavor": "claude"}
+    ).json()["user_id"]
+    assert client.post(f"/agents/{user}/model", json={"model": "bad"}).status_code == 422
+    monkeypatch.setattr(tmux, "list_panes", lambda: set())
+    assert client.post(f"/agents/{user}/model", json={"model": "opus"}).status_code == 409
+
+
+def test_live_model_options_and_dashboard_control(client):
+    r = client.get("/api/live-model-options")
+    assert r.status_code == 200
+    options = {h["flavor"]: h for h in r.json()["harnesses"]}
+    assert options["codex"]["mode"] == "picker"
+
+    portal = portal_source()
+    assert "function LiveModelControl" in portal
+    assert '"/api/live-model-options"' in portal
+    assert "recipient.user_id)}/model" in portal
+    assert "open picker" in portal
+
+
 def test_agent_can_reply_to_owner_without_tmux_delivery(client):
     user = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     n_calls = len(client._calls)

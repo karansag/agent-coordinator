@@ -291,6 +291,17 @@ HARNESS_SPAWN: dict[str, HarnessSpec] = {
 
 SPAWNABLE_FLAVORS = tuple(HARNESS_SPAWN)
 
+# Live model switching is deliberately separate from launch flags.  Most
+# harnesses accept ``/model <name>`` in an active conversation; Codex opens a
+# picker with ``/model`` and does not accept a model name argument.
+LIVE_MODEL_SWITCH_MODE = {
+    "claude": "direct",
+    "codex": "picker",
+    "pi": "direct",
+    "hermes": "custom",
+}
+_MODEL_REFERENCE = re.compile(r"[A-Za-z0-9_.:/~-]+")
+
 
 def spawn_options() -> list[dict]:
     """The harness/model menu the dashboard offers, as plain data."""
@@ -298,6 +309,41 @@ def spawn_options() -> list[dict]:
         {"flavor": flavor, "models": spec.models}
         for flavor, spec in HARNESS_SPAWN.items()
     ]
+
+
+def live_model_options() -> list[dict]:
+    """Return dashboard options for model switching in running harnesses."""
+    return [
+        {
+            "flavor": flavor,
+            "models": spec.models,
+            "mode": LIVE_MODEL_SWITCH_MODE[flavor],
+        }
+        for flavor, spec in HARNESS_SPAWN.items()
+    ]
+
+
+def live_model_command(flavor: str | None, model: str | None) -> str | None:
+    """Build a safe in-session model command for a registered harness.
+
+    Codex's TUI exposes a picker only, so it intentionally accepts no model
+    argument.  Hermes resolves configured provider/model references itself;
+    its references are restricted to a single command-safe token.
+    """
+    flavor = (flavor or "").lower()
+    spec = HARNESS_SPAWN.get(flavor)
+    mode = LIVE_MODEL_SWITCH_MODE.get(flavor)
+    if spec is None or mode is None:
+        return None
+    if mode == "picker":
+        return "/model" if model is None else None
+    if mode == "custom":
+        if model and _MODEL_REFERENCE.fullmatch(model):
+            return f"/model {model}"
+        return None
+    if model in spec.models:
+        return f"/model {model}"
+    return None
 
 
 def spawn_launch_command(

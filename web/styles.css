@@ -264,6 +264,10 @@
   .fhead .meta { font-size: 11px; color: var(--cream-dim); margin-top: 2px; }
   .fhead .meta b { color: var(--cream); font-weight: 500; }
   .fhead .inst { font-size: 11px; color: var(--cream-dim); font-style: italic; }
+  form.live-model { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 11px; color: var(--cream-dim); }
+  form.live-model select, form.live-model input { max-width: 260px; padding: 3px 6px; font-size: 11px; border-radius: 6px; }
+  form.live-model .hint { font-size: 10px; color: var(--cream-dim); }
+  form.live-model .err { color: var(--alert); font-size: 10px; }
   button.focus-back {
     display: block; margin-bottom: 16px; padding: 7px 12px;
     border: 1px solid var(--line); border-radius: 8px; background: var(--ink-2);

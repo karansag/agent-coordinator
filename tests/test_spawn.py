@@ -69,3 +69,25 @@ def test_spawn_options_shape():
     opts = {o["flavor"]: o["models"] for o in tmux.spawn_options()}
     assert set(opts) == {"claude", "codex", "pi", "hermes"}
     assert opts["claude"] == ["opus", "sonnet", "haiku"]
+
+
+def test_live_model_commands_are_harness_specific():
+    assert tmux.live_model_command("claude", "opus") == "/model opus"
+    assert tmux.live_model_command("pi", "~openai/gpt-latest") == "/model ~openai/gpt-latest"
+    assert tmux.live_model_command("hermes", "openrouter:openai/gpt-5") == "/model openrouter:openai/gpt-5"
+    # Codex's /model opens its picker; arguments are sent as normal prompts.
+    assert tmux.live_model_command("codex", None) == "/model"
+    assert tmux.live_model_command("codex", "gpt-5") is None
+
+
+def test_live_model_commands_reject_unknown_or_unsafe_values():
+    assert tmux.live_model_command("claude", "not-a-model") is None
+    assert tmux.live_model_command("hermes", "model\n/quit") is None
+    assert tmux.live_model_command("generic", "anything") is None
+
+
+def test_live_model_options_describe_direct_picker_and_custom_modes():
+    opts = {o["flavor"]: o for o in tmux.live_model_options()}
+    assert opts["claude"]["mode"] == "direct"
+    assert opts["codex"]["mode"] == "picker"
+    assert opts["hermes"]["mode"] == "custom"

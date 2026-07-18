@@ -1658,6 +1658,54 @@ function RosterChip({ r, state, team, selected, unread, ping, refresh }) {
   </div>`;
 }
 var DEFAULT_MODEL = "default";
+function LiveModelControl({ recipient, refresh }) {
+	const [harnesses, setHarnesses] = d([]);
+	const [model, setModel] = d("");
+	const [busy, setBusy] = d(false);
+	const [err, setErr] = d("");
+	const flavor = (recipient.flavor || "generic").toLowerCase();
+	h(() => {
+		let live = true;
+		fetch("/api/live-model-options").then((r) => r.json()).then((d) => {
+			if (live && d.harnesses) setHarnesses(d.harnesses);
+		}).catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, []);
+	const harness = harnesses.find((h) => h.flavor === flavor);
+	const models = harness?.models || [];
+	const mode = harness?.mode;
+	h(() => {
+		if (mode === "direct" && models.length && !models.includes(model)) setModel(models[0]);
+	}, [mode, models.join(",")]);
+	if (!recipient.pane_alive || !mode) return null;
+	const change = async (e) => {
+		e.preventDefault();
+		const selected = mode === "picker" ? null : model;
+		if (mode !== "picker" && !selected) return;
+		setBusy(true);
+		setErr("");
+		const r = await fetch(`/agents/${encodeURIComponent(recipient.user_id)}/model`, {
+			method: "POST",
+			headers: JSONH,
+			body: JSON.stringify({ model: selected })
+		});
+		if (!r.ok) setErr("model change failed");
+		setBusy(false);
+		if (r.ok) refresh();
+	};
+	if (mode === "picker") return m$1`<form class="live-model" onSubmit=${change}>
+    <span>model</span><button class="mini" disabled=${busy}>${busy ? "opening…" : "open picker"}</button>
+    <span class="hint">choose in Codex</span>${err && m$1`<span class="err">${err}</span>`}
+  </form>`;
+	return m$1`<form class="live-model" onSubmit=${change}>
+    <span>model</span>
+    ${mode === "custom" ? m$1`<input type="text" value=${model} placeholder="provider:model" onInput=${(e) => setModel(e.target.value)} />` : m$1`<select value=${model} onChange=${(e) => setModel(e.target.value)}>${models.map((m) => m$1`<option key=${m} value=${m}>${m}</option>`)}</select>`}
+    <button class="mini" disabled=${busy || !model}>${busy ? "changing…" : "change"}</button>
+    ${err && m$1`<span class="err">${err}</span>`}
+  </form>`;
+}
 function SpawnControl({ refresh }) {
 	const [harnesses, setHarnesses] = d([]);
 	const [flavor, setFlavor] = d("claude");
@@ -2174,6 +2222,7 @@ function FocusView({ user, state, refresh, freshIds }) {
           · <span style=${`color:${st.color}`}>${st.word}</span>${status === "needs_attention" && detail ? m$1` <span class="attn">${detail}</span>` : ""}
         </div>
         ${r.instructions && m$1`<div class="inst">"${r.instructions}"</div>`}
+        <${LiveModelControl} recipient=${r} refresh=${refresh} />
       </div>
     </div>
     <${Scope} user=${user} refresh=${refresh} />

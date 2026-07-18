@@ -186,6 +186,15 @@ def list_recipients(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def update_recipient_model(
+    conn: sqlite3.Connection, user_id: str, model: str
+) -> dict | None:
+    """Update the dashboard's model telemetry after a successful live switch."""
+    conn.execute("UPDATE recipients SET model=? WHERE user_id=?", (model, user_id))
+    conn.commit()
+    return get_recipient(conn, user_id)
+
+
 def create_task(
     conn: sqlite3.Connection,
     title: str,
