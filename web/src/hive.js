@@ -1,7 +1,7 @@
 import { html } from "htm/preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
-import { JSONH, focusHash, hue } from "./shared.js";
+import { HARNESSES, JSONH, focusHash, harnessStyle, hue } from "./shared.js";
 
 export function HiveView({ state, refresh }) {
   const canvasRef = useRef(null);
@@ -26,6 +26,11 @@ export function HiveView({ state, refresh }) {
   const drawRef = useRef(null);
   const [dropStatus, setDropStatus] = useState("");
   stateRef.current = state;
+  const liveHarnessKeys = new Set((state.recipients || [])
+    .filter(r => r.pane_alive)
+    .map(r => harnessStyle(r.flavor).key));
+  const liveHarnesses = Object.values(HARNESSES)
+    .filter(harness => liveHarnessKeys.has(harness.key));
 
   const messages = state.messages || [];
   const maxId = Math.max(0, ...messages.map(m => m.id));
@@ -272,6 +277,7 @@ export function HiveView({ state, refresh }) {
       const beeData = grouped.map((r, i) => {
         const name = r.user_id;
         const seed = hue(name);
+        const harness = harnessStyle(r.flavor);
         const mine = (data.tasks || []).filter(t => t.assignee === name && t.status !== "done")
           .sort((a, b) => (a.status === "picked_up" ? -1 : 1) - (b.status === "picked_up" ? -1 : 1)
             || b.updated_at - a.updated_at);
@@ -290,7 +296,7 @@ export function HiveView({ state, refresh }) {
         const y = homes[i].y + (still ? 0 : Math.sin(q * 1.7 + phase) * amp * .55);
         const dx = still ? 1 : Math.cos(q);
         const dy = still ? 0 : Math.cos(q * 1.7 + phase) * .94;
-        return { r, name, seed, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy };
+        return { r, name, seed, harness, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy };
       });
       // Boundary collision: a bee never sits inside a team box it doesn't
       // belong to — it gets nudged out through the nearest edge.
@@ -313,11 +319,12 @@ export function HiveView({ state, refresh }) {
         bee.y = Math.max(34, Math.min(244, bee.y));
       }
       for (const bee of beeData) {
-        const { r, name, seed, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy } = bee;
-        bees.set(name, { x, y, task: primary });
+        const { r, name, harness, x, y, dx, dy, q, picked, assigned, primary, extras, working, busy } = bee;
+        bees.set(name, { x, y, task: primary, harness: harness.key });
         if (assigned) token(assigned, x + 22, y + Math.sin(q * .8) * 3);
 
-        ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(dy, dx));
+        const bearing = Math.atan2(dy, dx);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(bearing);
         if (working) {
           ctx.fillStyle = "rgba(143,191,111,.25)";
           ctx.beginPath(); ctx.ellipse(0, 0, 18, 12, 0, 0, Math.PI * 2); ctx.fill();
@@ -326,11 +333,20 @@ export function HiveView({ state, refresh }) {
         ctx.fillStyle = "rgba(240,230,210,.5)";
         ctx.beginPath(); ctx.ellipse(-2, -7, 6, 3, -.45 - flap, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(-2, 7, 6, 3, .45 + flap, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = `hsl(${seed} 42% 58%)`;
+        ctx.fillStyle = harness.color;
         ctx.beginPath(); ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "rgba(22,18,12,.5)";
         ctx.fillRect(-4, -6, 2.5, 12); ctx.fillRect(2, -6, 2.5, 12);
         ctx.fillStyle = "#16120c"; ctx.beginPath(); ctx.arc(11, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+        // An upright harness plate makes the flavor readable without relying
+        // on body color, even while the bee banks around its flight path.
+        ctx.rotate(-bearing);
+        ctx.fillStyle = "rgba(22,18,12,.88)";
+        ctx.beginPath(); ctx.roundRect(-4.5, -4.5, 9, 9, 2); ctx.fill();
+        ctx.strokeStyle = harness.color; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = "#f0e6d2"; ctx.font = "bold 7px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(harness.mark, 0, .5);
         ctx.restore();
         if (picked) token(picked, x, y + 16);
         extras.slice(0, 4).forEach((task, j) => {
@@ -365,11 +381,13 @@ export function HiveView({ state, refresh }) {
       const dragBee = dragBeeRef.current && bees.get(dragBeeRef.current);
       if (dragBee && dragPointRef.current) {
         const p = dragPointRef.current;
+        const draggedRecipient = grouped.find(r => r.user_id === dragBeeRef.current);
+        const draggedHarness = harnessStyle(draggedRecipient && draggedRecipient.flavor);
         ctx.save(); ctx.strokeStyle = "rgba(240,230,210,.3)"; ctx.setLineDash([3, 4]);
         ctx.beginPath(); ctx.moveTo(dragBee.x, dragBee.y); ctx.lineTo(p.x, p.y); ctx.stroke();
         ctx.restore();
         ctx.save(); ctx.globalAlpha = .85;
-        ctx.fillStyle = `hsl(${hue(dragBeeRef.current)} 42% 58%)`;
+        ctx.fillStyle = draggedHarness.color;
         ctx.beginPath(); ctx.ellipse(p.x, p.y, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = "rgba(22,18,12,.5)";
         ctx.fillRect(p.x - 4, p.y - 6, 2.5, 12); ctx.fillRect(p.x + 2, p.y - 6, 2.5, 12);
@@ -458,7 +476,8 @@ export function HiveView({ state, refresh }) {
       const hovered = hoverRef.current && bees.get(hoverRef.current);
       if (hovered) {
         const title = hovered.task ? ` · ${hovered.task.title}` : "";
-        const label = hoverRef.current + title;
+        const harnessLabel = (HARNESSES[hovered.harness] || HARNESSES.generic).label;
+        const label = `${hoverRef.current} · ${harnessLabel}${title}`;
         ctx.font = "10px ui-monospace, monospace";
         const w = ctx.measureText(label).width + 12;
         const tx = Math.max(4, Math.min(width - w - 4, hovered.x - w / 2));
@@ -748,6 +767,13 @@ export function HiveView({ state, refresh }) {
   }, [state]);
 
   return html`<div class="hive-panel"><canvas ref=${canvasRef} tabindex="0"
-    aria-label="Live activity. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team; drag a team outline by its empty space to move the whole team somewhere else. Bees outside a team are kept out of team outlines. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
+    aria-label="Live activity. Bee body color and harness glyph identify the agent harness as listed in the legend. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team; drag a team outline by its empty space to move the whole team somewhere else. Bees outside a team are kept out of team outlines. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
+    ${liveHarnesses.length > 0 && html`<div class="harness-legend" aria-label="Bee harness legend">
+      <span class="legend-title">harness</span>
+      ${liveHarnesses.map(harness => html`<span class="harness-key" key=${harness.key}>
+        <span class="harness-swatch" style=${`--harness:${harness.color}`}>${harness.mark}</span>
+        ${harness.label}
+      </span>`)}
+    </div>`}
     <span class="sr-only" aria-live="polite">${dropStatus}</span></div>`;
 }

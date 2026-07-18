@@ -393,6 +393,19 @@ def test_portal_conversation_history_has_full_width_resize_handle(client):
     assert "resize: none" in portal
 
 
+def test_portal_bees_identify_their_harness_by_color_and_glyph(client):
+    portal = portal_source()
+    assert "export const HARNESSES" in portal
+    for flavor in ("claude", "codex", "pi", "hermes", "generic"):
+        assert f'key: "{flavor}"' in portal
+    assert "const harness = harnessStyle(r.flavor)" in portal
+    assert "ctx.fillStyle = harness.color" in portal
+    assert "ctx.fillText(harness.mark" in portal
+    assert 'class="harness-legend"' in portal
+    assert 'aria-label="Bee harness legend"' in portal
+    assert "harness: harness.key" in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]

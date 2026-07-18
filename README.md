@@ -139,7 +139,10 @@ The layout has two modes plus a persistent roster:
 - **Overview mode** (default): a live activity panel shows running
   agents orbiting a central honeycomb of waiting task hexagons. Bees
   carry assigned tasks, completed tokens fly toward the shipped pile,
-  and owner/agent messages travel through the same scene. Teammates
+  and owner/agent messages travel through the same scene. A stable body
+  color and upright glyph plate identify each bee's harness (Claude,
+  Codex, Pi, Hermes, or generic), with a compact legend in the panel;
+  activity remains a separate halo/marker channel. Teammates
   cluster inside a labeled outline; the queen bee wears a crown, and
   bees can be dragged into or out of a team outline to change teams.
   Task hexagons can be dragged onto a bee (individual assignment) or a

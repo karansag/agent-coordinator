@@ -6,6 +6,20 @@ export const JSONH = { "content-type": "application/json" };
 
 export const FLAVOR_ICON = { claude: "✳", codex: "◇", pi: "π", hermes: "☿", generic: "▪" };
 
+// Harness identity has its own palette and glyph so it remains distinct from
+// activity state (green/amber/red) and is never communicated by color alone.
+export const HARNESSES = Object.freeze({
+  claude:  { key: "claude",  label: "Claude",  color: "#d8905f", mark: "✳" },
+  codex:   { key: "codex",   label: "Codex",   color: "#56b4e9", mark: "◇" },
+  pi:      { key: "pi",      label: "Pi",      color: "#cc79a7", mark: "π" },
+  hermes:  { key: "hermes",  label: "Hermes",  color: "#e5c14f", mark: "☿" },
+  generic: { key: "generic", label: "Generic", color: "#9aa1a8", mark: "▪" },
+});
+
+export function harnessStyle(flavor) {
+  return HARNESSES[String(flavor || "generic").toLowerCase()] || HARNESSES.generic;
+}
+
 // Activity state -> dot class, display word, and color. One color per
 // state, matching the --state-* CSS custom properties.
 export const STATE = {
