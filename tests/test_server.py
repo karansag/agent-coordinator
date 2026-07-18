@@ -406,6 +406,14 @@ def test_portal_bees_identify_their_harness_by_color_and_glyph(client):
     assert "harness: harness.key" in portal
 
 
+def test_portal_spawn_offers_autonomy_choice(client):
+    portal = portal_source()
+    assert '<option value="auto">permissions: auto</option>' in portal
+    assert '<option value="supervised">permissions: ask first</option>' in portal
+    # the choice is sent with the spawn request
+    assert "model === DEFAULT_MODEL ? null : model, autonomy" in portal
+
+
 def test_state_reports_agents_liveness_and_ordered_messages(client):
     a = client.post("/register", json={"tmux_pane": "0:0.0"}).json()["user_id"]
     b = client.post("/register", json={"tmux_pane": "0:9.0"}).json()["user_id"]
@@ -566,7 +574,11 @@ def test_spawn_creates_window_and_registers_agent(client):
     body = r.json()
     assert body["ok"] is True
     assert body["tmux_pane"] == "agents:1.0"
-    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude")
+    # dashboard spawns default to auto permissions
+    assert body["autonomy"] == "auto"
+    assert client._spawns[-1] == (
+        tmux.AGENTS_SESSION, "claude --permission-mode bypassPermissions"
+    )
 
     recipients = client.get("/recipients").json()["recipients"]
     spawned = next(x for x in recipients if x["user_id"] == body["user_id"])
@@ -585,10 +597,32 @@ def test_spawn_pi_launches_pi_binary(client):
     assert r.json()["model"] is None
 
 
+def test_spawn_supervised_launches_ask_first(client):
+    r = client.post(
+        "/agents/spawn", json={"flavor": "claude", "autonomy": "supervised"}
+    )
+    assert r.status_code == 200
+    assert r.json()["autonomy"] == "supervised"
+    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude")
+    r = client.post(
+        "/agents/spawn", json={"flavor": "codex", "autonomy": "supervised"}
+    )
+    # supervised still suppresses the codex startup update prompt
+    assert client._spawns[-1] == (
+        tmux.AGENTS_SESSION, "codex -c check_for_update_on_startup=false"
+    )
+    assert client.post(
+        "/agents/spawn", json={"flavor": "claude", "autonomy": "yolo"}
+    ).status_code == 422
+
+
 def test_spawn_with_model_passes_cli_flag_and_records_model(client):
     r = client.post("/agents/spawn", json={"flavor": "claude", "model": "opus"})
     assert r.status_code == 200
-    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude --model opus")
+    assert client._spawns[-1] == (
+        tmux.AGENTS_SESSION,
+        "claude --model opus --permission-mode bypassPermissions",
+    )
     body = r.json()
     assert body["model"] == "opus"
     spawned = next(
@@ -601,8 +635,10 @@ def test_spawn_with_model_passes_cli_flag_and_records_model(client):
 def test_spawn_ignores_unknown_model(client):
     r = client.post("/agents/spawn", json={"flavor": "claude", "model": "totally-made-up"})
     assert r.status_code == 200
-    # Falls back to the bare binary; nothing bogus is recorded or launched.
-    assert client._spawns[-1] == (tmux.AGENTS_SESSION, "claude")
+    # Falls back to the default command; nothing bogus is recorded or launched.
+    assert client._spawns[-1] == (
+        tmux.AGENTS_SESSION, "claude --permission-mode bypassPermissions"
+    )
     assert r.json()["model"] is None
 
 

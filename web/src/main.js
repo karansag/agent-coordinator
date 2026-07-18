@@ -121,6 +121,7 @@ function SpawnControl({ refresh }) {
   const [harnesses, setHarnesses] = useState([]);
   const [flavor, setFlavor] = useState("claude");
   const [model, setModel] = useState(DEFAULT_MODEL);
+  const [autonomy, setAutonomy] = useState("auto");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -140,7 +141,7 @@ function SpawnControl({ refresh }) {
     e.preventDefault();
     setBusy(true);
     setErr("");
-    const body = { flavor, model: model === DEFAULT_MODEL ? null : model };
+    const body = { flavor, model: model === DEFAULT_MODEL ? null : model, autonomy };
     const r = await fetch("/agents/spawn", {
       method: "POST", headers: JSONH, body: JSON.stringify(body),
     });
@@ -158,6 +159,10 @@ function SpawnControl({ refresh }) {
       disabled=${models.length === 0}>
       <option value=${DEFAULT_MODEL}>default model</option>
       ${models.map(m => html`<option key=${m} value=${m}>${m}</option>`)}
+    </select>
+    <select title="permissions" value=${autonomy} onChange=${e => setAutonomy(e.target.value)}>
+      <option value="auto">permissions: auto</option>
+      <option value="supervised">permissions: ask first</option>
     </select>
     <button class="act" type="submit" disabled=${busy}>${busy ? "spawning…" : "spawn agent"}</button>
     ${err && html`<span style="color:var(--alert); font-size:11px">${err}</span>`}

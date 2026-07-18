@@ -113,6 +113,12 @@ class SpawnReq(BaseModel):
         description="Optional harness model. Only honored when it is one of "
         "the harness's known models; otherwise the harness default is used.",
     )
+    autonomy: Literal["auto", "supervised"] = Field(
+        default="auto",
+        description="'auto' launches the harness with its non-blocking "
+        "permission flags so the agent never stops for approval; "
+        "'supervised' keeps the harness's normal ask-first behavior.",
+    )
 
 
 class TeamCreateReq(BaseModel):
@@ -587,7 +593,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
 
     @app.post("/agents/spawn")
     def agents_spawn(req: SpawnReq):
-        command = tmux.spawn_launch_command(req.flavor, req.model)
+        command = tmux.spawn_launch_command(req.flavor, req.model, req.autonomy)
         # Only record the model when it is one that actually launched.
         spec = tmux.HARNESS_SPAWN.get(req.flavor)
         model = req.model if (spec and req.model in spec.models) else None
@@ -613,7 +619,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
         tmux.rename_window(pane, user_id)
         return {
             "ok": True, "user_id": user_id, "tmux_pane": pane,
-            "flavor": req.flavor, "model": model,
+            "flavor": req.flavor, "model": model, "autonomy": req.autonomy,
         }
 
     @app.post("/agents/{user_id}/stop")

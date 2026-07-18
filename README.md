@@ -138,7 +138,15 @@ The layout has two modes plus a persistent roster:
   assignment controls. The spawn control at the bottom launches a new
   agent in a fresh tmux window: pick a harness (claude, codex, pi, or
   hermes) and, optionally, one of that harness's known models, which is
-  passed to the harness binary with its model flag.
+  passed to the harness binary with its model flag. Spawns default to
+  auto permissions: the harness launches with its non-blocking flags
+  (claude bypassPermissions, codex never-ask in a workspace-write
+  sandbox, hermes yolo) so a spawned worker never stalls waiting for an
+  approval nobody sees. Choose "permissions: ask first" to spawn a
+  supervised agent with the harness's normal prompts instead. Startup
+  blockers are removed in both modes (codex's update prompt is
+  suppressed). Agents you register from your own terminal are never
+  touched by any of this.
 - **Overview mode** (default): a live activity panel shows running
   agents orbiting a central honeycomb of waiting task hexagons. Bees
   carry assigned tasks, completed tokens fly toward the shipped pile,

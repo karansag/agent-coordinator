@@ -233,16 +233,43 @@ AGENTS_SESSION = "agents"
 # that selects a model, and a curated set of known models offered in the UI.
 # "generic" is intentionally not spawnable: launching a bare shell produces a
 # registered pane with no agent in it, which is not a working target.
+#
+# startup_args are always passed: they remove interactive startup blockers
+# that would leave a freshly spawned pane stuck before the agent is usable
+# (e.g. codex's update prompt). auto_args additionally put the harness in a
+# non-blocking permission mode so a spawned worker never stops to ask for
+# approval; they are only passed when the spawn requests autonomy "auto".
+# Every flag verified against the installed harness in a live pane.
 class HarnessSpec:
-    def __init__(self, binary: str, model_flag: str, models: list[str]):
+    def __init__(
+        self,
+        binary: str,
+        model_flag: str,
+        models: list[str],
+        startup_args: str = "",
+        auto_args: str = "",
+    ):
         self.binary = binary
         self.model_flag = model_flag
         self.models = models
+        self.startup_args = startup_args
+        self.auto_args = auto_args
 
 
 HARNESS_SPAWN: dict[str, HarnessSpec] = {
-    "claude": HarnessSpec("claude", "--model", ["opus", "sonnet", "haiku"]),
-    "codex": HarnessSpec("codex", "--model", ["gpt-5-codex", "gpt-5"]),
+    "claude": HarnessSpec(
+        "claude",
+        "--model",
+        ["opus", "sonnet", "haiku"],
+        auto_args="--permission-mode bypassPermissions",
+    ),
+    "codex": HarnessSpec(
+        "codex",
+        "--model",
+        ["gpt-5-codex", "gpt-5"],
+        startup_args="-c check_for_update_on_startup=false",
+        auto_args="--ask-for-approval never --sandbox workspace-write",
+    ),
     "pi": HarnessSpec(
         "pi",
         "--model",
@@ -251,8 +278,15 @@ HARNESS_SPAWN: dict[str, HarnessSpec] = {
             "~anthropic/claude-sonnet-latest",
             "~openai/gpt-latest",
         ],
+        # pi does not gate commands behind approval prompts; auto needs
+        # no extra flags.
     ),
-    "hermes": HarnessSpec("hermes", "-m", []),
+    "hermes": HarnessSpec(
+        "hermes",
+        "-m",
+        [],
+        auto_args="--yolo --accept-hooks",
+    ),
 }
 
 SPAWNABLE_FLAVORS = tuple(HARNESS_SPAWN)
@@ -266,19 +300,28 @@ def spawn_options() -> list[dict]:
     ]
 
 
-def spawn_launch_command(flavor: str, model: str | None = None) -> str | None:
+def spawn_launch_command(
+    flavor: str, model: str | None = None, autonomy: str = "auto"
+) -> str | None:
     """Build the shell command that launches a harness in a fresh pane.
 
     Returns None for an unspawnable flavor. A model is only honored when it is
     one of the harness's known models; it is shell-quoted so patterns like
     `~anthropic/claude-opus-latest` are passed literally (no tilde expansion).
+    autonomy "auto" (the default) adds the harness's non-blocking permission
+    flags; "supervised" launches it in its normal ask-first mode.
     """
     spec = HARNESS_SPAWN.get(flavor)
     if spec is None:
         return None
+    parts = [spec.binary]
+    if spec.startup_args:
+        parts.append(spec.startup_args)
     if model and model in spec.models:
-        return f"{spec.binary} {spec.model_flag} {shlex.quote(model)}"
-    return spec.binary
+        parts.append(f"{spec.model_flag} {shlex.quote(model)}")
+    if autonomy == "auto" and spec.auto_args:
+        parts.append(spec.auto_args)
+    return " ".join(parts)
 
 
 def spawn_window(
