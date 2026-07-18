@@ -400,10 +400,17 @@ def test_portal_bees_identify_their_harness_by_color_and_glyph(client):
         assert f'key: "{flavor}"' in portal
     assert "const harness = harnessStyle(r.flavor)" in portal
     assert "ctx.fillStyle = harness.color" in portal
-    assert "ctx.fillText(harness.mark" in portal
+    # the mark rides in the name label (shape + color), not a plate on the body
+    assert "harness plate" not in portal
+    assert "ctx.fillText(harness.mark, labelLeft, labelY)" in portal
+    assert "labelLeft + markW + markGap" in portal
     assert 'class="harness-legend"' in portal
     assert 'aria-label="Bee harness legend"' in portal
     assert "harness: harness.key" in portal
+    # the legend teaches every spawnable harness even with no live agent;
+    # generic appears only when a generic agent is running
+    assert "legendHarnesses" in portal
+    assert 'harness.key !== "generic" || liveHarnessKeys.has("generic")' in portal
 
 
 def test_portal_spawn_offers_autonomy_choice(client):

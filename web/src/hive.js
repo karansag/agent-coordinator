@@ -26,11 +26,13 @@ export function HiveView({ state, refresh }) {
   const drawRef = useRef(null);
   const [dropStatus, setDropStatus] = useState("");
   stateRef.current = state;
+  // The legend always teaches every spawnable harness, whether or not one
+  // is running; generic only appears when a generic agent is actually live.
   const liveHarnessKeys = new Set((state.recipients || [])
     .filter(r => r.pane_alive)
     .map(r => harnessStyle(r.flavor).key));
-  const liveHarnesses = Object.values(HARNESSES)
-    .filter(harness => liveHarnessKeys.has(harness.key));
+  const legendHarnesses = Object.values(HARNESSES)
+    .filter(harness => harness.key !== "generic" || liveHarnessKeys.has("generic"));
 
   const messages = state.messages || [];
   const maxId = Math.max(0, ...messages.map(m => m.id));
@@ -338,15 +340,6 @@ export function HiveView({ state, refresh }) {
         ctx.fillStyle = "rgba(22,18,12,.5)";
         ctx.fillRect(-4, -6, 2.5, 12); ctx.fillRect(2, -6, 2.5, 12);
         ctx.fillStyle = "#16120c"; ctx.beginPath(); ctx.arc(11, 0, 3.5, 0, Math.PI * 2); ctx.fill();
-        // An upright harness plate makes the flavor readable without relying
-        // on body color, even while the bee banks around its flight path.
-        ctx.rotate(-bearing);
-        ctx.fillStyle = "rgba(22,18,12,.88)";
-        ctx.beginPath(); ctx.roundRect(-4.5, -4.5, 9, 9, 2); ctx.fill();
-        ctx.strokeStyle = harness.color; ctx.lineWidth = 1; ctx.stroke();
-        ctx.fillStyle = "#f0e6d2"; ctx.font = "bold 7px ui-monospace, monospace";
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(harness.mark, 0, .5);
         ctx.restore();
         if (picked) token(picked, x, y + 16);
         extras.slice(0, 4).forEach((task, j) => {
@@ -358,9 +351,21 @@ export function HiveView({ state, refresh }) {
           ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(`+${extras.length - 4}`, x + 29, y + 12);
         }
-        ctx.fillStyle = "#a89878"; ctx.font = "10px ui-monospace, monospace";
-        ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-        ctx.fillText(name, x, y + (picked ? 35 : 19));
+        // The harness mark rides in the name label, in the harness color:
+        // identity stays readable as shape+color without a badge on the body.
+        const labelY = y + (picked ? 35 : 19);
+        ctx.font = "10px ui-monospace, monospace";
+        ctx.textBaseline = "alphabetic";
+        const markGap = 3;
+        const markW = ctx.measureText(harness.mark).width;
+        const nameW = ctx.measureText(name).width;
+        const labelLeft = x - (markW + markGap + nameW) / 2;
+        ctx.textAlign = "left";
+        ctx.fillStyle = harness.color;
+        ctx.fillText(harness.mark, labelLeft, labelY);
+        ctx.fillStyle = "#a89878";
+        ctx.fillText(name, labelLeft + markW + markGap, labelY);
+        ctx.textAlign = "center";
         const attention = r.activity && r.activity.status === "needs_attention";
         if (attention) {
           ctx.fillStyle = "#f2a93b"; ctx.font = "bold 13px ui-monospace, monospace";
@@ -767,13 +772,13 @@ export function HiveView({ state, refresh }) {
   }, [state]);
 
   return html`<div class="hive-panel"><canvas ref=${canvasRef} tabindex="0"
-    aria-label="Live activity. Bee body color and harness glyph identify the agent harness as listed in the legend. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team; drag a team outline by its empty space to move the whole team somewhere else. Bees outside a team are kept out of team outlines. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
-    ${liveHarnesses.length > 0 && html`<div class="harness-legend" aria-label="Bee harness legend">
+    aria-label="Live activity. Bee body color and the harness mark beside each bee's name identify the agent harness as listed in the legend. Drag a comb cell or a task card onto a bee or a team outline to assign the task; drag a bee into or out of a team outline to change its team; drag a team outline by its empty space to move the whole team somewhere else. Bees outside a team are kept out of team outlines. The task assignee select and the sidebar team boxes are the keyboard and touch alternatives."></canvas>
+    <div class="harness-legend" aria-label="Bee harness legend">
       <span class="legend-title">harness</span>
-      ${liveHarnesses.map(harness => html`<span class="harness-key" key=${harness.key}>
+      ${legendHarnesses.map(harness => html`<span class="harness-key" key=${harness.key}>
         <span class="harness-swatch" style=${`--harness:${harness.color}`}>${harness.mark}</span>
         ${harness.label}
       </span>`)}
-    </div>`}
+    </div>
     <span class="sr-only" aria-live="polite">${dropStatus}</span></div>`;
 }
