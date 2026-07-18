@@ -183,7 +183,9 @@ record ordering as a graph the dashboard draws), parcels team-assigned
 tasks out to teammates, and monitors their progress. A task the owner
 assigns to a team is delivered to its queen; if the team has no queen,
 every member is notified and whoever takes it runs
-`agent-msg task-update N --assignee <yourself>`.
+`agent-msg task-update N --assignee <yourself>`. Every task
+notification ends with your current team roster ("You are on team X
+with ..."), so you always learn your teammates when work arrives.
 
 The crown is stored on the team but carries no special server
 authority: it is a prompt-driven role, the owner retains every right,

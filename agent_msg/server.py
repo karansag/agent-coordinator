@@ -445,6 +445,21 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
     def owner_send(req: OwnerSendReq):
         return _deliver_from_owner(req.recipient, req.content, req.context)
 
+    def _team_line(user_id: str) -> str:
+        """One sentence telling an agent who its teammates are right now."""
+        recipient = db.get_recipient(conn, user_id)
+        if recipient is None or not recipient.get("team_id"):
+            return ""
+        team = db.get_team(conn, recipient["team_id"])
+        if team is None:
+            return ""
+        others = [m for m in team["members"] if m != user_id]
+        mates = ", ".join(others) if others else "no one else yet"
+        line = f" You are on team '{team['name']}' with {mates}"
+        if team["queen"]:
+            line += f" (queen: {team['queen']})"
+        return line + "."
+
     def _notify_assignment(task: dict):
         hint = (
             f"Before editing, use branch task/{task['id']} in a dedicated git worktree. "
@@ -455,7 +470,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
         content = f"You are assigned task #{task['id']}: {task['title']}."
         if task.get("description"):
             content += f" Details: {task['description']}."
-        content += f" {hint}"
+        content += f" {hint}{_team_line(task['assignee'])}"
         try:
             _deliver_from_owner(task["assignee"], content, f"task #{task['id']}")
         except HTTPException:
@@ -485,7 +500,7 @@ def create_app(db_path: Path = DB_PATH, monitor: bool = True) -> FastAPI:
             targets = team["members"]
         for target in targets:
             try:
-                _deliver_from_owner(target, content, context)
+                _deliver_from_owner(target, content + _team_line(target), context)
             except HTTPException:
                 pass  # membership validated; a pane may still be gone
 

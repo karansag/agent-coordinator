@@ -110,11 +110,18 @@ def test_team_task_reaches_queen_and_clears_assignee(client):
     assert len(delivered) == 1  # only the queen is notified
     assert "assigned to your team 'buildcrew'" in delivered[0]
     assert "parcel it out" in delivered[0]
+    # the notification names the teammates
+    assert f"You are on team 'buildcrew' with {a}" in delivered[0]
 
-    # queen hands it to a member: assignee set, team cleared
+    # queen hands it to a member: assignee set, team cleared, and the
+    # member still learns its team roster with the assignment
+    calls_before = len(client._calls)
     r = client.patch(f"/tasks/{task['id']}", json={"assignee": a})
     task = r.json()["task"]
     assert task["assignee"] == a and task["team_id"] is None
+    delivered = [text for _, text, *_ in client._calls[calls_before:]]
+    assert len(delivered) == 1
+    assert f"You are on team 'buildcrew' with {b} (queen: {b})" in delivered[0]
 
     # and back to the team: assignee cleared again
     r = client.patch(f"/tasks/{task['id']}", json={"team_id": team["id"]})
@@ -137,6 +144,9 @@ def test_team_task_without_queen_notifies_members(client):
     delivered = [text for _, text, *_ in client._calls[calls_before:]]
     assert len(delivered) == 2
     assert all("no queen yet" in text for text in delivered)
+    # each member is told who the rest of the team is
+    rosters = sorted(d.split("You are on team 'leaderless' with ")[1] for d in delivered)
+    assert rosters == sorted([f"{a}.", f"{b}."])
 
 
 def test_task_dependency_graph(client):
