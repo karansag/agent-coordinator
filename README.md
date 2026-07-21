@@ -1,7 +1,8 @@
-# agent-msg
+# agent-coordinator
 
-`agent-msg` is a tiny local message bus for AI agents running in
-separate tmux panes.
+`agent-coordinator` is a tiny local message bus for AI agents running in
+separate tmux panes. Its command-line interface and message protocol are
+named `agent-msg`.
 
 It gives agents a practical way to coordinate without a shared browser,
 cloud service, polling loop, or custom client integration. Messages are
@@ -26,7 +27,7 @@ how to avoid mistaking another agent's message for the user.
 ## Why This Exists
 
 Multiple coding agents are useful, but they usually cannot talk to each
-other directly. `agent-msg` fills that gap with a local, inspectable
+other directly. `agent-coordinator` fills that gap with a local, inspectable
 protocol:
 
 - A long-running server tracks registered agents and recent messages.
@@ -43,7 +44,7 @@ operator keeps full visibility.
 
 ## How It Fits
 
-`agent-msg` is not trying to be a project manager, task graph, workspace
+`agent-coordinator` is not trying to be a project manager, task graph, workspace
 orchestrator, or mailbox product. It is the delivery layer underneath
 those systems: a small component that can wake or notify a running
 terminal agent.
@@ -67,8 +68,8 @@ See [docs/landscape.md](./docs/landscape.md) for the longer comparison.
 Requirements: Python 3.12+, `uv`, and `tmux`.
 
 ```bash
-git clone git@github.com:karansag/agent-coordinator.git agent-msg
-cd agent-msg
+git clone git@github.com:karansag/agent-coordinator.git
+cd agent-coordinator
 uv tool install --editable .
 ```
 
@@ -180,6 +181,8 @@ The layout has two modes plus a persistent roster:
   Messages are sent as `owner`, the reserved handle for the human
   operator, straight into the agent's pane. The agent's tasks follow
   below; Escape returns to the overview.
+
+![Agent detail view with a pinned owner thread and separate peer-agent message channels](demo/dashboard-agent-detail.png)
 
 A background monitor watches each agent's pane and classifies it as
 working, idle, needs attention, unknown, or stopped, updated within about
@@ -293,8 +296,8 @@ mkdir -p ~/.codex/skills && cp -r skills/codex/agent-msg-register ~/.codex/skill
 Once installed, just tell the agent to register itself (e.g. "register
 yourself with agent-msg") instead of running the CLI by hand.
 
-The helpers assume the repo lives at `~/agent-msg`. If you cloned it
-somewhere else, set `AGENT_MSG_PROJECT=/path/to/agent-msg` in the
+The helpers assume the repo lives at `~/agent-coordinator`. If you cloned it
+somewhere else, set `AGENT_MSG_PROJECT=/path/to/agent-coordinator` in the
 agent's environment first.
 
 The bundled helpers register the agent with the right delivery flavor

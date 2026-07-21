@@ -9,7 +9,7 @@ recording opens right as Claude sends the first message.
 ## Run it
 
 ```bash
-cd agent-msg
+cd agent-coordinator
 vhs demo/conversation.tape
 ```
 
