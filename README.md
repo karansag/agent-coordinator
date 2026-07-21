@@ -121,6 +121,8 @@ open <http://127.0.0.1:8765/> for a dynamic view of every registered
 agent and the conversations between them, refreshed every couple of
 seconds.
 
+![Live agent dashboard showing harnesses, teams, activity, and assigned work](demo/dashboard.gif)
+
 The layout has two modes plus a persistent roster:
 
 - **Roster (right sidebar)**: one compact chip per running agent with
