@@ -611,6 +611,37 @@ async function patchTask(id, patch) {
 }
 //#endregion
 //#region web/src/hive.js
+var TASK_CELL_RADIUS = 18;
+var TASK_CELL_CLEARANCE = 22;
+function taskCellClearsTeams(point, boxes) {
+	return boxes.every((box) => point.x <= box.x - TASK_CELL_CLEARANCE || point.x >= box.x + box.w + TASK_CELL_CLEARANCE || point.y <= box.y - TASK_CELL_CLEARANCE || point.y >= box.y + box.h + TASK_CELL_CLEARANCE);
+}
+function placeTaskCell(ideal, boxes, occupied, width) {
+	const bounds = {
+		minX: TASK_CELL_CLEARANCE,
+		maxX: Math.max(TASK_CELL_CLEARANCE, width - TASK_CELL_CLEARANCE),
+		minY: TASK_CELL_CLEARANCE,
+		maxY: 260 - TASK_CELL_CLEARANCE
+	};
+	const candidate = (x, y) => ({
+		x: Math.max(bounds.minX, Math.min(bounds.maxX, x)),
+		y: Math.max(bounds.minY, Math.min(bounds.maxY, y))
+	});
+	const usable = (point) => taskCellClearsTeams(point, boxes) && occupied.every((other) => Math.hypot(point.x - other.x, point.y - other.y) >= 34);
+	const start = candidate(ideal.x, ideal.y);
+	if (usable(start)) return start;
+	const step = 17;
+	const limit = Math.hypot(width, 260);
+	for (let radius = step; radius <= limit; radius += step) {
+		const samples = Math.max(12, Math.ceil(Math.PI * 2 * radius / step));
+		for (let i = 0; i < samples; i++) {
+			const angle = -Math.PI / 2 + i * Math.PI * 2 / samples;
+			const point = candidate(ideal.x + Math.cos(angle) * radius, ideal.y + Math.sin(angle) * radius);
+			if (usable(point)) return point;
+		}
+	}
+	return start;
+}
 function HiveView({ state, refresh }) {
 	const canvasRef = A(null);
 	const stateRef = A(state);
@@ -872,10 +903,17 @@ function HiveView({ state, refresh }) {
 				ctx.fillText(`task comb · ${waiting.length} waiting · ${carriedCount} carried`, center.x, 17);
 			}
 			const doneIds = new Set((data.tasks || []).filter((t) => t.status === "done").map((t) => t.id));
+			const occupiedTaskCells = [];
 			visible.forEach((task, i) => {
 				const col = i % cols, row = Math.floor(i / cols);
-				const x = center.x + (col - (cols - 1) / 2) * cellX;
-				const y = center.y - (rows - 1) * cellY / 2 + row * cellY + (col % 2 ? cellY / 2 : 0);
+				const { x, y } = placeTaskCell({
+					x: center.x + (col - (cols - 1) / 2) * cellX,
+					y: center.y - (rows - 1) * cellY / 2 + row * cellY + (col % 2 ? cellY / 2 : 0)
+				}, teamBoxesRef.current, occupiedTaskCells, width);
+				occupiedTaskCells.push({
+					x,
+					y
+				});
 				const stranded = task.assignee && !live.has(task.assignee);
 				const team = task.team_id && teamById.get(task.team_id) || null;
 				const blocked = (task.depends_on || []).some((d) => !doneIds.has(d));
@@ -907,7 +945,7 @@ function HiveView({ state, refresh }) {
 				if (lifted) ctx.globalAlpha = .3;
 				ctx.save();
 				if (blocked) ctx.setLineDash([3, 3]);
-				hex(x, y, 18, stranded ? "rgba(224,108,85,.10)" : team ? teamColor(team.name, .12) : "rgba(242,169,59,.12)", stranded ? "#e06c55" : team ? teamColor(team.name, .8) : "#b97f27");
+				hex(x, y, TASK_CELL_RADIUS, stranded ? "rgba(224,108,85,.10)" : team ? teamColor(team.name, .12) : "rgba(242,169,59,.12)", stranded ? "#e06c55" : team ? teamColor(team.name, .8) : "#b97f27");
 				ctx.restore();
 				ctx.fillStyle = stranded ? "#e06c55" : "#f2a93b";
 				ctx.font = "9px ui-monospace, monospace";
@@ -1504,7 +1542,8 @@ function HiveView({ state, refresh }) {
 		};
 		window.__hive = {
 			bees: () => beesRef.current,
-			teamBoxes: () => teamBoxesRef.current
+			teamBoxes: () => teamBoxesRef.current,
+			taskCells: () => taskCellsRef.current
 		};
 		canvas.addEventListener("mousemove", move);
 		canvas.addEventListener("mouseleave", leave);

@@ -3,6 +3,52 @@ import { useEffect, useRef, useState } from "preact/hooks";
 
 import { HARNESSES, JSONH, focusHash, harnessStyle, hue } from "./shared.js";
 
+const TASK_CELL_RADIUS = 18;
+const TASK_CELL_CLEARANCE = TASK_CELL_RADIUS + 4;
+
+function taskCellClearsTeams(point, boxes) {
+  return boxes.every(box =>
+    point.x <= box.x - TASK_CELL_CLEARANCE ||
+    point.x >= box.x + box.w + TASK_CELL_CLEARANCE ||
+    point.y <= box.y - TASK_CELL_CLEARANCE ||
+    point.y >= box.y + box.h + TASK_CELL_CLEARANCE);
+}
+
+function placeTaskCell(ideal, boxes, occupied, width) {
+  const bounds = {
+    minX: TASK_CELL_CLEARANCE,
+    maxX: Math.max(TASK_CELL_CLEARANCE, width - TASK_CELL_CLEARANCE),
+    minY: TASK_CELL_CLEARANCE,
+    maxY: 260 - TASK_CELL_CLEARANCE,
+  };
+  const candidate = (x, y) => ({
+    x: Math.max(bounds.minX, Math.min(bounds.maxX, x)),
+    y: Math.max(bounds.minY, Math.min(bounds.maxY, y)),
+  });
+  const usable = point => taskCellClearsTeams(point, boxes) &&
+    occupied.every(other => Math.hypot(point.x - other.x, point.y - other.y) >= 34);
+  const start = candidate(ideal.x, ideal.y);
+  if (usable(start)) return start;
+
+  // Search outward from the normal honeycomb slot. Sampling each ring at
+  // roughly half-cell intervals keeps the nearest free result stable while
+  // still fitting between nearby team outlines.
+  const step = 17;
+  const limit = Math.hypot(width, 260);
+  for (let radius = step; radius <= limit; radius += step) {
+    const samples = Math.max(12, Math.ceil(Math.PI * 2 * radius / step));
+    for (let i = 0; i < samples; i++) {
+      const angle = -Math.PI / 2 + i * Math.PI * 2 / samples;
+      const point = candidate(
+        ideal.x + Math.cos(angle) * radius,
+        ideal.y + Math.sin(angle) * radius,
+      );
+      if (usable(point)) return point;
+    }
+  }
+  return start;
+}
+
 export function HiveView({ state, refresh }) {
   const canvasRef = useRef(null);
   const stateRef = useRef(state);
@@ -231,10 +277,17 @@ export function HiveView({ state, refresh }) {
       }
       const doneIds = new Set((data.tasks || [])
         .filter(t => t.status === "done").map(t => t.id));
+      const occupiedTaskCells = [];
       visible.forEach((task, i) => {
         const col = i % cols, row = Math.floor(i / cols);
-        const x = center.x + (col - (cols - 1) / 2) * cellX;
-        const y = center.y - ((rows - 1) * cellY) / 2 + row * cellY + (col % 2 ? cellY / 2 : 0);
+        const ideal = {
+          x: center.x + (col - (cols - 1) / 2) * cellX,
+          y: center.y - ((rows - 1) * cellY) / 2 + row * cellY + (col % 2 ? cellY / 2 : 0),
+        };
+        const { x, y } = placeTaskCell(
+          ideal, teamBoxesRef.current, occupiedTaskCells, width,
+        );
+        occupiedTaskCells.push({ x, y });
         const stranded = task.assignee && !live.has(task.assignee);
         const team = (task.team_id && teamById.get(task.team_id)) || null;
         const blocked = (task.depends_on || []).some(d => !doneIds.has(d));
@@ -256,7 +309,7 @@ export function HiveView({ state, refresh }) {
         if (lifted) ctx.globalAlpha = .3;
         ctx.save();
         if (blocked) ctx.setLineDash([3, 3]);
-        hex(x, y, 18,
+        hex(x, y, TASK_CELL_RADIUS,
           stranded ? "rgba(224,108,85,.10)" : team ? teamColor(team.name, .12) : "rgba(242,169,59,.12)",
           stranded ? "#e06c55" : team ? teamColor(team.name, .8) : "#b97f27");
         ctx.restore();
@@ -735,7 +788,11 @@ export function HiveView({ state, refresh }) {
       if (assignee) await assign(id, assignee);
       else if (box) await assignTeam(id, box);
     };
-    window.__hive = { bees: () => beesRef.current, teamBoxes: () => teamBoxesRef.current };
+    window.__hive = {
+      bees: () => beesRef.current,
+      teamBoxes: () => teamBoxesRef.current,
+      taskCells: () => taskCellsRef.current,
+    };
     canvas.addEventListener("mousemove", move); canvas.addEventListener("mouseleave", leave);
     canvas.addEventListener("click", click);
     canvas.addEventListener("pointerdown", pointerDown);

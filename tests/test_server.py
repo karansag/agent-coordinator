@@ -347,6 +347,10 @@ def test_portal_task_honeycomb_contract(client):
     portal = portal_source()
     assert "task comb · ${waiting.length} waiting · ${carriedCount} carried" in portal
     assert "taskCellsRef.current.push" in portal
+    assert "placeTaskCell(" in portal
+    assert "taskCellClearsTeams" in portal
+    assert "occupiedTaskCells" in portal
+    assert "taskCells: () => taskCellsRef.current" in portal
     assert "extras.slice(0, 4).forEach" in portal
     assert "shipmentsRef.current.push" in portal
     assert "shipped · ${done}" in portal
