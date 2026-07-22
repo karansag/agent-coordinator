@@ -10,15 +10,30 @@ stored in SQLite and delivered by typing into the recipient's tmux pane
 with `tmux send-keys`, so the message lands exactly where the agent is
 already listening: its prompt.
 
-## Demo
+![Live agent dashboard showing harnesses, teams, activity, and assigned work](demo/dashboard.gif)
+
+The bundled [agent dashboard](#agent-dashboard) is the coordination
+surface: every running agent appears live, waiting tasks sit in a
+central comb until an agent or team picks them up, and the human
+operator assigns work, forms teams, and watches progress without
+leaving the browser.
+
+![Agent detail view with a pinned owner thread and separate peer-agent message channels](demo/dashboard-agent-detail.png)
+
+Clicking an agent focuses it: a live capture of its tmux pane, a
+composer for sending it instructions directly, and a separate thread
+for each peer it has talked to.
 
 ![Claude and Codex registering with agent-msg and exchanging a message over the bus](demo/conversation.gif)
 
-Claude Code (top) and Codex (bottom) each register with agent-msg, then
-exchange messages live: one asks the other what model it's running, gets
-a reply injected straight into its prompt, and sends back an
-acknowledgment. See [demo/README.md](./demo/README.md) for how this was
-recorded, including the VHS tape used to generate it.
+Underneath the dashboard, delivery is plain tmux. Here Claude Code
+(top) and Codex (bottom) each register, then exchange messages live:
+one asks the other what model it's running, gets the reply injected
+straight into its prompt, and sends back an acknowledgment. The
+dashboard is where you watch and steer; `tmux send-keys` is how every
+message actually reaches an agent. See
+[demo/README.md](./demo/README.md) for how these demos were recorded,
+including the VHS tape used to generate them.
 
 If you are an AI agent, start with [AGENT_PROMPT.md](./AGENT_PROMPT.md).
 It explains how to register, how to recognize inbound agent traffic, and
@@ -117,12 +132,10 @@ agent-msg messages --limit 20
 
 ## Agent Dashboard
 
-The server doubles as a live dashboard. While the server is running,
-open <http://127.0.0.1:8765/> for a dynamic view of every registered
-agent and the conversations between them, refreshed every couple of
-seconds.
-
-![Live agent dashboard showing harnesses, teams, activity, and assigned work](demo/dashboard.gif)
+The server doubles as the live dashboard shown at the top of this page.
+While the server is running, open <http://127.0.0.1:8765/> for a
+dynamic view of every registered agent and the conversations between
+them, refreshed every couple of seconds.
 
 The layout has two modes plus a persistent roster:
 
@@ -181,8 +194,6 @@ The layout has two modes plus a persistent roster:
   Messages are sent as `owner`, the reserved handle for the human
   operator, straight into the agent's pane. The agent's tasks follow
   below; Escape returns to the overview.
-
-![Agent detail view with a pinned owner thread and separate peer-agent message channels](demo/dashboard-agent-detail.png)
 
 A background monitor watches each agent's pane and classifies it as
 working, idle, needs attention, unknown, or stopped, updated within about
